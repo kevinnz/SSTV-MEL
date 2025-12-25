@@ -1,33 +1,33 @@
-/// PD120 SSTV Mode Implementation
+/// PD180 SSTV Mode Implementation
 ///
-/// PD120 is a color SSTV mode with the following characteristics:
+/// PD180 is a color SSTV mode with the following characteristics:
 /// - Resolution: 640 × 496 pixels
 /// - Color encoding: YCbCr (luminance, then chrominance)
 /// - Transmits TWO image lines per transmission frame (Y-even, Cb, Cr, Y-odd)
 /// - Frequency range: 1500 Hz (black) to 2300 Hz (white)
-/// - VIS code: 95 (0x5F)
-/// - Total duration: ~126 seconds
+/// - VIS code: 96 (0x60)
+/// - Total duration: ~187 seconds
 ///
 /// Frame structure (for 2 image lines):
 /// - Sync pulse: 20ms @ 1200 Hz
 /// - Porch: 2.08ms @ 1500 Hz
-/// - Y0 (even line luminance): 121.6ms
-/// - R-Y (Cr chrominance): 121.6ms
-/// - B-Y (Cb chrominance): 121.6ms
-/// - Y1 (odd line luminance): 121.6ms
+/// - Y0 (even line luminance): 183.04ms
+/// - R-Y (Cr chrominance): 183.04ms
+/// - B-Y (Cb chrominance): 183.04ms
+/// - Y1 (odd line luminance): 183.04ms
 ///
 /// References:
 /// - SSTV Handbook Chapter 5
 /// - Common amateur radio SSTV implementations
-struct PD120Mode: SSTVMode {
+struct PD180Mode: SSTVMode {
     
     // MARK: - Mode Identification
     
-    /// VIS code for PD120 mode (95 decimal = 0x5F)
-    let visCode: UInt8 = 0x5F // 95 in decimal (was incorrectly 0x63)
+    /// VIS code for PD180 mode
+    let visCode: UInt8 = 0x60 // 96 in decimal
     
     /// Human-readable name
-    let name: String = "PD120"
+    let name: String = "PD180"
     
     // MARK: - Image Dimensions
     
@@ -43,23 +43,26 @@ struct PD120Mode: SSTVMode {
     let linesPerFrame: Int = 2
     
     /// Total duration of one transmission frame (contains 2 image lines)
-    /// 126 seconds / 248 frames ≈ 508ms
-    let frameDurationMs: Double = 508.48
+    /// Measured from actual signal: 260 steps × 128 samples / 44100 Hz ≈ 754.65ms
+    /// Original calculation: 187 seconds / 248 frames = 754.03ms
+    let frameDurationMs: Double = 754.65
     
     /// Duration of sync pulse at start of each frame (in ms)
     let syncPulseMs: Double = 20.0
     
     /// Duration of porch after sync pulse (in ms)
-    let porchMs: Double = 2.08
+    /// Fine-tuned for horizontal alignment (original spec: 2.08ms)
+    let porchMs: Double = 0.50
     
     /// Duration of each Y component (in ms) - one per image line
-    let yDurationMs: Double = 121.6
+    /// Adjusted to match total frame duration
+    let yDurationMs: Double = 183.14
     
     /// Duration of Cb (B-Y, blue chrominance) component (in ms)
-    let cbDurationMs: Double = 121.6
+    let cbDurationMs: Double = 183.14
     
     /// Duration of Cr (R-Y, red chrominance) component (in ms)
-    let crDurationMs: Double = 121.6
+    let crDurationMs: Double = 183.14
     
     // MARK: - Frequency Constants (in Hz)
     
@@ -82,17 +85,17 @@ struct PD120Mode: SSTVMode {
 
 // MARK: - Frame Decoding
 
-extension PD120Mode {
+extension PD180Mode {
     
-    /// Decode a PD120 frame from frequency data.
+    /// Decode a PD180 frame from frequency data.
     ///
-    /// PD120 transmits TWO image lines per frame with the structure:
+    /// PD180 transmits TWO image lines per frame with the structure:
     /// - Sync pulse: 20ms @ 1200 Hz
     /// - Porch: 2.08ms @ 1500 Hz
-    /// - Y0 (even line luminance): 121.6ms
-    /// - R-Y (Cr chrominance, shared): 121.6ms
-    /// - B-Y (Cb chrominance, shared): 121.6ms
-    /// - Y1 (odd line luminance): 121.6ms
+    /// - Y0 (even line luminance): 183.04ms
+    /// - R-Y (Cr chrominance, shared): 183.04ms
+    /// - B-Y (Cb chrominance, shared): 183.04ms
+    /// - Y1 (odd line luminance): 183.04ms
     ///
     /// - Parameters:
     ///   - frequencies: Array of detected frequencies in Hz, time-aligned to frame start
