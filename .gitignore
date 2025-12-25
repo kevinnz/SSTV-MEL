@@ -1,0 +1,41 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+xcuserdata/
+*.xcworkspace
+*.xcodeproj
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build artifacts
+*.o
+*.so
+*.dylib
+
+# VS Code
+.vscode/
+
+# IDE
+.idea/
+
+# Generated files
+output.png
+decoded_*.png
+
+# Temporary files
+*.tmp
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Test artifacts
+.test_output/
