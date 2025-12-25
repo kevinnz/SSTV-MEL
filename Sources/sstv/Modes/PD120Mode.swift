@@ -181,12 +181,17 @@ extension PD120Mode {
             
             // Ensure we don't go out of bounds
             guard sampleStart < frequencies.count && sampleEnd <= frequencies.count else {
-                values[pixelIndex] = 0.0
+                values[pixelIndex] = 0.5 // Default to mid-value
                 continue
             }
             
             // Average the frequencies in this pixel's sample range
             let pixelFrequencies = frequencies[sampleStart..<sampleEnd]
+            guard !pixelFrequencies.isEmpty else {
+                values[pixelIndex] = 0.5
+                continue
+            }
+            
             let avgFrequency = pixelFrequencies.reduce(0.0, +) / Double(pixelFrequencies.count)
             
             // Map frequency to normalized value (0.0...1.0)
