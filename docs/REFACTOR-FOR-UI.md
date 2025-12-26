@@ -62,7 +62,7 @@ Introduce a single decoder object with the following responsibilities:
 
 ### Decoder Lifecycle
 
-- `init(mode: SSTVMode, sampleRate: Double)`
+- `init(mode: SSTVModeDecoder, sampleRate: Double)`
 - `reset()`
 - `setMode(_:)`
 - `processSamples(_ samples: [Float])`
