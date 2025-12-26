@@ -101,6 +101,7 @@ sstv/
 │     └─ PD120ModeTests.swift
 │
 ├─ audio/
+│  ├─ test1.wav
 │  └─ test2.wav
 │
 ├─ samples/
@@ -110,13 +111,15 @@ sstv/
 └─ docs/
    ├─ NEXT-STEPS.md
    ├─ PD120-Implementation.md
+   ├─ REFACTOR-FOR-UI.md
    ├─ REFACTOR-TO-LIBRARY.md
+   ├─ sstv_05.pdf
    └─ adr/
 ```
 
 ---
 
-## � Using as a Library
+## 📚 Using as a Library
 
 SSTVCore can be integrated into your Swift projects:
 
@@ -126,7 +129,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/kevinnz/SSTV-MEL.git", from: "1.0.0")
+    .package(url: "https://github.com/kevinnz/SSTV-MEL.git", from: "0.2.0")
 ],
 targets: [
     .target(
@@ -488,7 +491,7 @@ They exist to prevent subtle DSP breakage and architectural drift.
 * [ ] Additional Robot modes
 * [ ] Additional PD modes (PD50, PD160, PD240)
 
-Mode implementations live in `Sources/sstv/Modes/` and should read like specifications, not algorithms.
+Mode implementations live in `Sources/SSTVCore/Modes/` and should read like specifications, not algorithms.
 
 ---
 
