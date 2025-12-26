@@ -12,6 +12,7 @@
 ///
 /// Positive values shift the image right, negative values shift left.
 /// The value is in milliseconds (typical range: -5.0 to +5.0 ms).
+/// Maximum allowed: ±50.0 ms (approximately half a line width).
 ///
 /// ## Skew Adjustment
 /// Skew adjustment compensates for timing drift between transmitter and receiver.
@@ -25,6 +26,7 @@
 ///
 /// Positive values correct for clockwise slant, negative for counter-clockwise.
 /// The value is in milliseconds per line (typical range: -0.5 to +0.5 ms/line).
+/// Maximum allowed: ±1.0 ms/line (prevents extreme distortion).
 ///
 /// ## Usage Example
 /// ```swift
@@ -39,6 +41,14 @@
 /// ```
 public struct DecodingOptions {
     
+    // MARK: - Limits
+    
+    /// Maximum allowed phase offset in milliseconds (±50ms, ~half a line)
+    public static let maxPhaseOffsetMs: Double = 50.0
+    
+    /// Maximum allowed skew in milliseconds per line (±1.0ms/line)
+    public static let maxSkewMsPerLine: Double = 1.0
+    
     // MARK: - Phase Adjustment
     
     /// Horizontal phase offset in milliseconds.
@@ -48,7 +58,12 @@ public struct DecodingOptions {
     /// - Negative values: Shift image content to the left (sample earlier)
     /// - Default: 0.0 (no adjustment)
     /// - Typical range: -5.0 to +5.0 ms
-    public var phaseOffsetMs: Double
+    /// - Hard limit: ±50.0 ms
+    public var phaseOffsetMs: Double {
+        didSet {
+            phaseOffsetMs = Self.clampPhase(phaseOffsetMs)
+        }
+    }
     
     // MARK: - Skew Adjustment
     
@@ -60,18 +75,39 @@ public struct DecodingOptions {
     /// - Negative values: Correct counter-clockwise slant (lines drift left going down)
     /// - Default: 0.0 (no adjustment)
     /// - Typical range: -0.5 to +0.5 ms/line
+    /// - Hard limit: ±1.0 ms/line
     ///
     /// The total adjustment for line N is: `phaseOffsetMs + (N * skewMsPerLine)`
-    public var skewMsPerLine: Double
+    public var skewMsPerLine: Double {
+        didSet {
+            skewMsPerLine = Self.clampSkew(skewMsPerLine)
+        }
+    }
     
     // MARK: - Debug Options
     
     /// Enable debug output during decoding
     public var debug: Bool
     
+    // MARK: - Clamping Helpers
+    
+    /// Clamp phase offset to valid range
+    private static func clampPhase(_ value: Double) -> Double {
+        return min(max(value, -maxPhaseOffsetMs), maxPhaseOffsetMs)
+    }
+    
+    /// Clamp skew to valid range
+    private static func clampSkew(_ value: Double) -> Double {
+        return min(max(value, -maxSkewMsPerLine), maxSkewMsPerLine)
+    }
+    
     // MARK: - Initialization
     
     /// Create decoding options with specified adjustments.
+    ///
+    /// Values are automatically clamped to valid ranges:
+    /// - Phase: ±50.0 ms
+    /// - Skew: ±1.0 ms/line
     ///
     /// - Parameters:
     ///   - phaseOffsetMs: Horizontal phase offset in milliseconds (default: 0.0)
@@ -82,8 +118,8 @@ public struct DecodingOptions {
         skewMsPerLine: Double = 0.0,
         debug: Bool = false
     ) {
-        self.phaseOffsetMs = phaseOffsetMs
-        self.skewMsPerLine = skewMsPerLine
+        self.phaseOffsetMs = Self.clampPhase(phaseOffsetMs)
+        self.skewMsPerLine = Self.clampSkew(skewMsPerLine)
         self.debug = debug
     }
     
