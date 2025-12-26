@@ -75,8 +75,7 @@ sstv/
 │     │  └─ PD180Mode.swift
 │     ├─ Image/
 │     │  ├─ ImageBuffer.swift
-│     │  ├─ ImageWriter.swift
-│     │  └─ PNGWriter.swift
+│     │  └─ ImageWriter.swift
 │     └─ Util/
 │        └─ ImageComparison.swift
 │

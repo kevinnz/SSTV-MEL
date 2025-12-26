@@ -88,7 +88,7 @@ final class GoldenFileTests: XCTestCase {
         let buffer = try decoder.decode(audio: audio)
         
         // Write PNG
-        try PNGWriter.write(buffer: buffer, to: outputPath)
+        try ImageWriter.write(buffer: buffer, to: outputPath)
         
         // Compare images
         let result = try ImageComparison.compare(path1: outputPath, path2: expectedPath)
