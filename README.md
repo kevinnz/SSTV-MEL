@@ -35,21 +35,25 @@ The project consists of two targets:
 The library is structured with clear internal boundaries:
 
 ```
-Audio (WAV parsing)
+Audio Source (WAV file or live stream)
     ↓
-DSP (FM demodulation, frequency tracking)
+Sample Provider (push samples to decoder)
     ↓
-SSTV Protocol (VIS detection, sync, modes)
+SSTVDecoderCore (streaming decoder engine)
     ↓
-Image Buffer (pixels, YCbCr color space)
+DecoderDelegate (event callbacks)
     ↓
-Image Writer (PNG/JPEG output)
+ImageBuffer (incrementally updated)
+    ↓
+ImageWriter (PNG/JPEG output)
 ```
 
 Key principles:
 - DSP code is **mode-agnostic**
 - SSTV modes define **structure and timing**, not math
 - Image output is isolated behind a writer
+- Decoder emits events via delegate for UI integration
+- Streaming API accepts samples incrementally
 - `main.swift` coordinates, nothing more
 
 This layout is deliberate so the core decoder can later be reused by a macOS app without refactoring.
@@ -72,8 +76,11 @@ sstv/
 │  │  │  ├─ FMDemodulator.swift
 │  │  │  └─ Goertzel.swift
 │  │  ├─ SSTV/
+│  │  │  ├─ DecoderDelegate.swift     # Event protocol for UI integration
 │  │  │  ├─ DecodingOptions.swift
-│  │  │  ├─ SSTVDecoder.swift
+│  │  │  ├─ DecodingProgress.swift
+│  │  │  ├─ SSTVDecoder.swift         # Batch decoder (legacy)
+│  │  │  ├─ SSTVDecoderCore.swift     # Streaming decoder engine
 │  │  │  ├─ SSTVMode.swift
 │  │  │  └─ VISDetector.swift
 │  │  ├─ Modes/
@@ -203,6 +210,81 @@ Progress phases include:
 - **Signal Search**: Finding the start of the image data
 - **Frame Decoding**: Decoding image lines (reports lines completed)
 - **Writing**: Saving output file (CLI only)
+
+#### Streaming Decoder (for UI Applications)
+
+For real-time UI integration with progressive rendering, use `SSTVDecoderCore`:
+
+```swift
+import SSTVCore
+
+// Create decoder with sample rate
+let decoder = SSTVDecoderCore(sampleRate: 44100.0)
+
+// Set up delegate to receive events
+class MyDecoderDelegate: DecoderDelegate {
+    func didLockSync(confidence: Float) {
+        print("Sync locked with \(Int(confidence * 100))% confidence")
+    }
+    
+    func didDetectVISCode(_ code: UInt8, mode: String) {
+        print("Detected mode: \(mode)")
+    }
+    
+    func didDecodeLine(lineNumber: Int, totalLines: Int) {
+        // Update UI with each line decoded
+        DispatchQueue.main.async {
+            self.updateProgressiveImage(decoder.imageBuffer)
+        }
+    }
+    
+    func didCompleteImage(_ imageBuffer: ImageBuffer) {
+        DispatchQueue.main.async {
+            self.displayFinalImage(imageBuffer)
+        }
+    }
+    
+    func didChangeState(_ state: DecoderState) {
+        print("State: \(state)")
+    }
+}
+
+decoder.delegate = MyDecoderDelegate()
+
+// Feed samples incrementally (from audio capture, file, etc.)
+decoder.processSamples(audioChunk1)
+decoder.processSamples(audioChunk2)
+// ... continue feeding samples
+
+// Read partial image at any time
+if let partialImage = decoder.imageBuffer {
+    let data = try ImageWriter.encode(buffer: partialImage, format: .png)
+    // Display partial image in UI
+}
+
+// Reset for next decode
+decoder.reset()
+```
+
+**Decoder States:**
+- `idle` - Waiting for samples
+- `detectingVIS` - Searching for VIS code
+- `searchingSync` - Looking for sync pattern
+- `decoding(line:totalLines:)` - Actively decoding
+- `complete` - Image decode finished
+- `error(DecoderError)` - Decode failed
+
+**Available Events:**
+- `didLockSync(confidence:)` - Sync pattern found
+- `didLoseSync()` - Sync lost during decode
+- `didBeginVISDetection()` - Started VIS search
+- `didDetectVISCode(_:mode:)` - VIS code identified
+- `didFailVISDetection()` - VIS detection failed
+- `didDecodeLine(lineNumber:totalLines:)` - Line complete
+- `didUpdateProgress(_:)` - Overall progress update
+- `didCompleteImage(_:)` - Full image decoded
+- `didChangeState(_:)` - State machine transition
+- `didEncounterError(_:)` - Error occurred
 
 ### Platform Support
 
