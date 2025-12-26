@@ -1,4 +1,5 @@
 import Foundation
+import SSTVCore
 
 /// Command-line SSTV decoder
 func main() {

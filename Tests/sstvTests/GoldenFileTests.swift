@@ -1,5 +1,5 @@
 import XCTest
-@testable import sstv
+@testable import SSTVCore
 import Foundation
 
 /// Integration tests that decode sample WAV files and compare against golden reference images

@@ -2,23 +2,23 @@
 ///
 /// This buffer stores pixel data in a flat array, with pixels arranged row-by-row.
 /// Color space handling (RGB, YCbCr conversion) is performed by the caller.
-struct ImageBuffer {
+public struct ImageBuffer {
     /// Image width in pixels
-    let width: Int
+    public let width: Int
     
     /// Image height in pixels
-    let height: Int
+    public let height: Int
     
     /// Pixel data stored as flat array (row-major order)
     /// Each pixel is represented as three consecutive values: R, G, B (0.0...1.0)
-    private(set) var pixels: [Double]
+    public private(set) var pixels: [Double]
     
     /// Create a new image buffer with the given dimensions.
     ///
     /// - Parameters:
     ///   - width: Image width in pixels
     ///   - height: Image height in pixels
-    init(width: Int, height: Int) {
+    public init(width: Int, height: Int) {
         self.width = width
         self.height = height
         self.pixels = Array(repeating: 0.0, count: width * height * 3)
@@ -32,7 +32,7 @@ struct ImageBuffer {
     ///   - r: Red component (0.0...1.0)
     ///   - g: Green component (0.0...1.0)
     ///   - b: Blue component (0.0...1.0)
-    mutating func setPixel(x: Int, y: Int, r: Double, g: Double, b: Double) {
+    public mutating func setPixel(x: Int, y: Int, r: Double, g: Double, b: Double) {
         guard x >= 0 && x < width && y >= 0 && y < height else {
             return
         }
@@ -48,7 +48,7 @@ struct ImageBuffer {
     /// - Parameters:
     ///   - y: Row index (0-based)
     ///   - rowPixels: Array of pixel values (R, G, B triplets). Must contain exactly width * 3 values.
-    mutating func setRow(y: Int, rowPixels: [Double]) {
+    public mutating func setRow(y: Int, rowPixels: [Double]) {
         guard y >= 0 && y < height else {
             return
         }

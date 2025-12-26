@@ -1,12 +1,12 @@
 import Foundation
 
 /// Decoding errors
-enum DecodingError: Error {
+public enum DecodingError: Error {
     case unknownMode(String)
 }
 
 /// Protocol for mode-agnostic SSTV decoding
-protocol SSTVModeDecoder {
+public protocol SSTVModeDecoder {
     /// Decode a frame of frequency data into pixel rows
     /// For modes that transmit 2 lines per frame (like PD modes), this returns 2 rows
     /// - Parameters:
@@ -39,7 +39,9 @@ extension PD180Mode: SSTVModeDecoder {}
 /// - Mode detection
 /// - Line-by-line decoding
 /// - Image output
-struct SSTVDecoder {
+public struct SSTVDecoder {
+    
+    public init() {}
     
     /// Decode SSTV audio into an image with auto mode detection
     ///
@@ -48,7 +50,7 @@ struct SSTVDecoder {
     ///   - options: Decoding options for phase and skew adjustment
     /// - Returns: Decoded image buffer
     /// - Throws: DecodingError if decoding fails
-    func decode(audio: WAVFile, options: DecodingOptions = .default) throws -> ImageBuffer {
+    public func decode(audio: WAVFile, options: DecodingOptions = .default) throws -> ImageBuffer {
         print("Decoding SSTV signal...")
         print("  Sample rate: \(audio.sampleRate) Hz")
         print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
@@ -92,7 +94,7 @@ struct SSTVDecoder {
     ///   - options: Decoding options for phase and skew adjustment
     /// - Returns: Decoded image buffer
     /// - Throws: DecodingError if decoding fails or mode is unknown
-    func decode(audio: WAVFile, forcedMode: String, options: DecodingOptions = .default) throws -> ImageBuffer {
+    public func decode(audio: WAVFile, forcedMode: String, options: DecodingOptions = .default) throws -> ImageBuffer {
         print("Decoding SSTV signal...")
         print("  Sample rate: \(audio.sampleRate) Hz")
         print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
