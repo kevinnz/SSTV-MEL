@@ -54,20 +54,17 @@ public enum ImageWriteError: Error {
 /// Supports both PNG and JPEG output formats
 public struct ImageWriter {
     
-    /// Write an ImageBuffer to a file
+    /// Encode an ImageBuffer to image data
     ///
     /// - Parameters:
-    ///   - buffer: Image buffer to write
-    ///   - path: Output file path
-    ///   - format: Image format (PNG or JPEG). If nil, detected from file extension
-    /// - Throws: ImageWriteError if writing fails
-    public static func write(buffer: ImageBuffer, to path: String, format: ImageFormat? = nil) throws {
+    ///   - buffer: Image buffer to encode
+    ///   - format: Image format (PNG or JPEG)
+    /// - Returns: Encoded image data
+    /// - Throws: ImageWriteError if encoding fails
+    public static func encode(buffer: ImageBuffer, format: ImageFormat) throws -> Data {
         guard buffer.width > 0 && buffer.height > 0 else {
             throw ImageWriteError.invalidDimensions
         }
-        
-        // Auto-detect format from extension if not specified
-        let outputFormat = format ?? ImageFormat.from(path: path)
         
         // Convert normalized pixel values (0.0...1.0) to 8-bit (0...255)
         var rgbData = Data()
@@ -81,24 +78,41 @@ public struct ImageWriter {
             rgbData.append(byte)
         }
         
-        // Use ImageIO to write image (macOS native)
-        try writeUsingImageIO(
+        // Use ImageIO to encode image (macOS/iOS native)
+        return try encodeUsingImageIO(
             width: buffer.width,
             height: buffer.height,
             rgbData: rgbData,
-            path: path,
-            format: outputFormat
+            format: format
         )
     }
     
-    /// Write image using macOS ImageIO framework
-    private static func writeUsingImageIO(
+    /// Write an ImageBuffer to a file
+    ///
+    /// - Parameters:
+    ///   - buffer: Image buffer to write
+    ///   - path: Output file path
+    ///   - format: Image format (PNG or JPEG). If nil, detected from file extension
+    /// - Throws: ImageWriteError if writing fails
+    public static func write(buffer: ImageBuffer, to path: String, format: ImageFormat? = nil) throws {
+        // Auto-detect format from extension if not specified
+        let outputFormat = format ?? ImageFormat.from(path: path)
+        
+        // Encode the image
+        let data = try encode(buffer: buffer, format: outputFormat)
+        
+        // Write to file
+        let url = URL(fileURLWithPath: path)
+        try data.write(to: url)
+    }
+    
+    /// Encode image using macOS/iOS ImageIO framework
+    private static func encodeUsingImageIO(
         width: Int,
         height: Int,
         rgbData: Data,
-        path: String,
         format: ImageFormat
-    ) throws {
+    ) throws -> Data {
         #if os(macOS) || os(iOS)
         // Use Core Graphics on Apple platforms
         let colorSpace = CGColorSpaceCreateDeviceRGB()
@@ -124,14 +138,15 @@ public struct ImageWriter {
             throw ImageWriteError.writeError("Failed to create CGImage")
         }
         
-        let url = URL(fileURLWithPath: path)
-        guard let destination = CGImageDestinationCreateWithURL(
-            url as CFURL,
+        // Create in-memory destination
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data as CFMutableData,
             format.uti as CFString,
             1,
             nil
         ) else {
-            throw ImageWriteError.writeError("Failed to create image destination")
+            throw ImageWriteError.writeError("Failed to create image destination for format: \(format.uti)")
         }
         
         // Set compression options for JPEG
@@ -143,8 +158,10 @@ public struct ImageWriter {
         CGImageDestinationAddImage(destination, cgImage, properties as CFDictionary)
         
         guard CGImageDestinationFinalize(destination) else {
-            throw ImageWriteError.writeError("Failed to write image file")
+            throw ImageWriteError.writeError("Failed to finalize image encoding")
         }
+        
+        return data as Data
         #else
         throw ImageWriteError.unsupportedPlatform
         #endif
