@@ -116,116 +116,71 @@ struct SSTVDecoder {
         return try decodeWithMode(audio: audio, samples: samples, mode: mode, debug: debug)
     }
     
-    /// Decode with a specific mode
+    /// Decode with a specific mode using FM demodulation
+    ///
+    /// This approach uses true FM demodulation (Hilbert transform + phase difference)
+    /// instead of Goertzel-based frequency binning. This provides:
+    /// - Sample-level frequency resolution (not window-level)
+    /// - Continuous phase tracking (no binning artifacts)
+    /// - Much more accurate pixel values
     private func decodeWithMode(
         audio: WAVFile,
         samples: [Double],
         mode: SSTVModeDecoder,
         debug: Bool = false
     ) throws -> ImageBuffer {
-        print("Tracking frequencies...")
-        let windowSize = 512
-        let stepSize = 128
+        print("Demodulating FM signal...")
         
-        let tracker = FrequencyTracker(
-            sampleRate: audio.sampleRate,
-            windowSize: windowSize,
-            stepSize: stepSize
-        )
-        let frequencies = tracker.track(samples: samples)
-        
-        print("  Detected \(frequencies.count) frequency measurements")
+        // Use FM demodulation for accurate frequency tracking
+        let fmTracker = FMFrequencyTracker(sampleRate: audio.sampleRate)
+        let frequencies = fmTracker.track(samples: samples)
         
         // Calculate samples per frame (each frame contains linesPerFrame image lines)
         let samplesPerFrame = Int(mode.frameDurationMs * audio.sampleRate / 1000.0)
-        let stepsPerFrame = samplesPerFrame / stepSize
         
         print("  Samples per frame: \(samplesPerFrame)")
-        print("  Steps per frame: \(stepsPerFrame)")
         print("  Lines per frame: \(mode.linesPerFrame)")
         
         // Find start of SSTV signal (look for sync tone patterns)
         print("Searching for SSTV signal start...")
-        let startIndex = findSignalStart(
+        let startSample = findSignalStartFM(
             frequencies: frequencies,
             mode: mode,
-            sampleRate: audio.sampleRate,
-            stepSize: stepSize
+            sampleRate: audio.sampleRate
         )
-        print("  Signal starts at step \(startIndex)")
-        
-        // Debug: Export frequency data
-        if debug {
-            print("\nDEBUG: Exporting frequency data...")
-            exportFrequencyDebug(
-                frequencies: frequencies,
-                startIndex: startIndex,
-                stepsPerFrame: stepsPerFrame,
-                mode: mode,
-                sampleRate: audio.sampleRate
-            )
-        }
+        print("  Signal starts at sample \(startSample)")
         
         // Create image buffer
         var buffer = ImageBuffer(width: mode.width, height: mode.height)
         
         // Calculate number of frames to decode
         let numFrames = mode.height / mode.linesPerFrame
-        let maxFrames = min(numFrames, (frequencies.count - startIndex) / stepsPerFrame)
+        let maxFrames = min(numFrames, (frequencies.count - startSample) / samplesPerFrame)
         
-        // Decode each frame with per-frame sync tracking
-        print("Decoding frames...")
+        // CONTINUOUS DECODING with sample-level precision
+        print("Decoding frames (FM demodulation, sample-level precision)...")
         
         let startTime = Date()
         var lastUpdateTime = startTime
-        let updateIntervalSeconds: TimeInterval = 15.0 // Update every 15 seconds
-        
-        let syncFreq = mode.syncFrequencyHz
-        let syncTolerance = 50.0
-        var currentFrameStart = startIndex
+        let updateIntervalSeconds: TimeInterval = 15.0
         
         for frameIndex in 0..<maxFrames {
-            // Find exact sync position for this frame (search within ±5 steps of expected)
-            let expectedStart = startIndex + frameIndex * stepsPerFrame
-            var actualStart = expectedStart
-            var bestSyncScore = 0
+            // Extract frame at sample-level precision
+            let frameStartSample = startSample + frameIndex * samplesPerFrame
+            let frameEndSample = min(frameStartSample + samplesPerFrame, frequencies.count)
             
-            let searchRange = max(0, expectedStart - 5)..<min(frequencies.count - 10, expectedStart + 6)
-            for pos in searchRange {
-                var syncScore = 0
-                for s in 0..<6 {
-                    if pos + s < frequencies.count && abs(frequencies[pos + s] - syncFreq) < syncTolerance {
-                        syncScore += 1
-                    }
-                }
-                if syncScore > bestSyncScore {
-                    bestSyncScore = syncScore
-                    actualStart = pos
-                }
-            }
-            
-            // Use the found sync position
-            currentFrameStart = actualStart
-            let frameEnd = min(currentFrameStart + stepsPerFrame, frequencies.count)
-            
-            guard frameEnd <= frequencies.count else {
+            guard frameEndSample <= frequencies.count else {
                 print("\n  Warning: Insufficient data for frame \(frameIndex)")
                 break
             }
             
-            // Extract frequencies for this frame
-            let frameFrequencies = Array(frequencies[currentFrameStart..<frameEnd])
+            // Extract frequencies for this frame (now at sample rate!)
+            let frameFrequencies = Array(frequencies[frameStartSample..<frameEndSample])
             
-            // Upsample to match expected sample count
-            let upsampledFrequencies = upsampleFrequencies(
-                frameFrequencies,
-                targetCount: samplesPerFrame
-            )
-            
-            // Decode the frame (returns linesPerFrame rows)
+            // Decode the frame - pass the actual sample rate since we have per-sample data
             let rows = mode.decodeFrame(
-                frequencies: upsampledFrequencies,
-                sampleRate: audio.sampleRate,
+                frequencies: frameFrequencies,
+                sampleRate: audio.sampleRate,  // Now using actual sample rate!
                 frameIndex: frameIndex
             )
             
@@ -277,6 +232,110 @@ struct SSTVDecoder {
     ///   - stepSize: Step size used in frequency tracking
     /// - Returns: Index where signal likely starts
     /// Find the start of image data by looking for stable sync patterns
+    /// Find the start of the SSTV signal using FM-demodulated frequency data
+    ///
+    /// This version works with sample-rate frequency data from FM demodulation.
+    /// We look for the characteristic 1200 Hz sync pulses that mark frame starts.
+    private func findSignalStartFM(
+        frequencies: [Double],
+        mode: SSTVModeDecoder,
+        sampleRate: Double
+    ) -> Int {
+        let syncFreq = mode.syncFrequencyHz  // 1200 Hz
+        let syncTolerance = 100.0  // Tolerance for noisy FM demod
+        
+        // Calculate expected samples per frame
+        let samplesPerFrame = Int(mode.frameDurationMs * sampleRate / 1000.0)
+        
+        // Sync pulse is 20ms
+        let syncDurationMs = 20.0
+        let samplesPerSync = Int(syncDurationMs * sampleRate / 1000.0)
+        
+        print("  Looking for sync patterns (samplesPerFrame: \(samplesPerFrame), samplesPerSync: \(samplesPerSync))...")
+        
+        // Search for sustained sync pulses followed by image data
+        var bestScore = 0
+        var bestIndex = 0
+        
+        // Skip first ~1 second which contains the VIS header
+        let skipSamples = Int(1.0 * sampleRate)
+        let searchLimit = min(frequencies.count - samplesPerFrame * 5, frequencies.count / 2)
+        
+        // Use a coarser search step for speed (check every 100 samples)
+        let searchStep = 100
+        
+        for startIndex in stride(from: skipSamples, to: searchLimit, by: searchStep) {
+            var score = 0
+            
+            // Check multiple frames starting from this point
+            for frameNum in 0..<5 {
+                let frameStart = startIndex + frameNum * samplesPerFrame
+                if frameStart + samplesPerFrame >= frequencies.count { break }
+                
+                // Check for sync pulse at start of frame
+                // Sample every 10th sample for speed
+                var syncCount = 0
+                for s in stride(from: 0, to: samplesPerSync, by: 10) {
+                    if frameStart + s < frequencies.count {
+                        let freq = frequencies[frameStart + s]
+                        if abs(freq - syncFreq) < syncTolerance {
+                            syncCount += 1
+                        }
+                    }
+                }
+                
+                // Check for image data after sync (1500-2300 Hz)
+                let imageCheckStart = frameStart + samplesPerSync + 100
+                var imageCount = 0
+                for s in stride(from: 0, to: 500, by: 50) {
+                    if imageCheckStart + s < frequencies.count {
+                        let freq = frequencies[imageCheckStart + s]
+                        if freq >= 1400 && freq <= 2400 {
+                            imageCount += 1
+                        }
+                    }
+                }
+                
+                let expectedSyncSamples = samplesPerSync / 10
+                if syncCount >= expectedSyncSamples / 3 && imageCount >= 5 {
+                    score += syncCount + imageCount
+                }
+            }
+            
+            if score > bestScore {
+                bestScore = score
+                bestIndex = startIndex
+            }
+        }
+        
+        // Fine-tune: search backward/forward for exact sync start
+        let fineSearchRange = 500
+        var adjustedIndex = bestIndex
+        var bestSyncScore = 0
+        
+        for offset in -fineSearchRange..<fineSearchRange {
+            let testIndex = bestIndex + offset
+            if testIndex < 0 || testIndex + samplesPerSync >= frequencies.count { continue }
+            
+            var syncScore = 0
+            for s in stride(from: 0, to: samplesPerSync, by: 5) {
+                let freq = frequencies[testIndex + s]
+                if abs(freq - syncFreq) < syncTolerance {
+                    syncScore += 1
+                }
+            }
+            
+            if syncScore > bestSyncScore {
+                bestSyncScore = syncScore
+                adjustedIndex = testIndex
+            }
+        }
+        
+        print("  Found sync pattern at sample \(adjustedIndex) (score: \(bestScore))")
+        return adjustedIndex
+    }
+    
+    /// Find the approximate start of the SSTV signal (Goertzel version - legacy)
     ///
     /// The VIS code uses 1100Hz and 1300Hz for bits, with 1200Hz for start/stop.
     /// Image frames use 1200Hz sync pulses for ~20ms followed by image data.

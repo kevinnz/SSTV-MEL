@@ -43,26 +43,26 @@ struct PD180Mode: SSTVMode {
     let linesPerFrame: Int = 2
     
     /// Total duration of one transmission frame (contains 2 image lines)
-    /// Measured from actual signal: 260 steps × 128 samples / 44100 Hz ≈ 754.65ms
-    /// Original calculation: 187 seconds / 248 frames = 754.03ms
+    /// Empirically tuned to match actual signal timing
+    /// Measured: 260 steps × 128 samples / 44100 Hz ≈ 754.65ms
     let frameDurationMs: Double = 754.65
     
     /// Duration of sync pulse at start of each frame (in ms)
     let syncPulseMs: Double = 20.0
     
     /// Duration of porch after sync pulse (in ms)
-    /// Fine-tuned for horizontal alignment (original spec: 2.08ms)
+    /// Empirically tuned for best horizontal alignment
     let porchMs: Double = 0.50
     
     /// Duration of each Y component (in ms) - one per image line
-    /// Adjusted to match total frame duration
-    let yDurationMs: Double = 183.14
+    /// Empirically tuned: (754.65 - 20 - 0.5) / 4 = 183.54ms
+    let yDurationMs: Double = 183.54
     
     /// Duration of Cb (B-Y, blue chrominance) component (in ms)
-    let cbDurationMs: Double = 183.14
+    let cbDurationMs: Double = 183.54
     
     /// Duration of Cr (R-Y, red chrominance) component (in ms)
-    let crDurationMs: Double = 183.14
+    let crDurationMs: Double = 183.54
     
     // MARK: - Frequency Constants (in Hz)
     
@@ -87,15 +87,25 @@ struct PD180Mode: SSTVMode {
 
 extension PD180Mode {
     
-    /// Decode a PD180 frame from frequency data.
+    /// Decode a PD180 frame from frequency data using TIME-BASED decoding.
+    ///
+    /// This implementation treats SSTV as a continuous timeline, avoiding sample-count rounding
+    /// that causes horizontal shear and vertical banding.
     ///
     /// PD180 transmits TWO image lines per frame with the structure:
-    /// - Sync pulse: 20ms @ 1200 Hz
-    /// - Porch: 2.08ms @ 1500 Hz
-    /// - Y0 (even line luminance): 183.04ms
-    /// - R-Y (Cr chrominance, shared): 183.04ms
-    /// - B-Y (Cb chrominance, shared): 183.04ms
-    /// - Y1 (odd line luminance): 183.04ms
+    /// - Sync pulse: 20ms @ 1200 Hz (IGNORED - not part of image data)
+    /// - Porch: 2.08ms @ 1500 Hz (IGNORED - timing reference only)
+    /// - Y0 (even line luminance): 183.04ms (ACTIVE VIDEO)
+    /// - R-Y (Cr chrominance, shared): 183.04ms (ACTIVE VIDEO)
+    /// - B-Y (Cb chrominance, shared): 183.04ms (ACTIVE VIDEO)
+    /// - Y1 (odd line luminance): 183.04ms (ACTIVE VIDEO)
+    ///
+    /// TIME-BASED DECODING STRATEGY:
+    /// - Each pixel position maps to an EXACT time offset from component start
+    /// - Sample indices are computed as fractional values (no rounding)
+    /// - Linear interpolation reads between samples for sub-sample precision
+    /// - Phase continuity is maintained across all components and lines
+    /// - Sync/porch regions are explicitly excluded from pixel sampling
     ///
     /// - Parameters:
     ///   - frequencies: Array of detected frequencies in Hz, time-aligned to frame start
@@ -108,48 +118,60 @@ extension PD180Mode {
         sampleRate: Double,
         frameIndex: Int
     ) -> [[Double]] {
-        // Calculate sample counts for each component
-        let samplesPerMs = sampleRate / 1000.0
+        // Calculate the EXACT time (in seconds) when each component starts
+        // These are derived from PD180's published spec timings
+        let samplesPerSecond = sampleRate
         
-        let syncSamples = Int(syncPulseMs * samplesPerMs)
-        let porchSamples = Int(porchMs * samplesPerMs)
-        let ySamples = Int(yDurationMs * samplesPerMs)
-        let crSamples = Int(crDurationMs * samplesPerMs)
-        let cbSamples = Int(cbDurationMs * samplesPerMs)
+        // Component start times in milliseconds (from frame start)
+        let syncEndTimeMs = syncPulseMs
+        let porchEndTimeMs = syncEndTimeMs + porchMs
+        let y0StartTimeMs = porchEndTimeMs
+        let y0EndTimeMs = y0StartTimeMs + yDurationMs
+        let crStartTimeMs = y0EndTimeMs
+        let crEndTimeMs = crStartTimeMs + crDurationMs
+        let cbStartTimeMs = crEndTimeMs
+        let cbEndTimeMs = cbStartTimeMs + cbDurationMs
+        let y1StartTimeMs = cbEndTimeMs
         
-        // Calculate starting indices for each component
-        // Frame structure: Sync, Porch, Y0, Cr, Cb, Y1
-        let y0StartIndex = syncSamples + porchSamples
-        let crStartIndex = y0StartIndex + ySamples
-        let cbStartIndex = crStartIndex + crSamples
-        let y1StartIndex = cbStartIndex + cbSamples
+        // Convert milliseconds to fractional sample indices
+        // NOTE: These are CONTINUOUS fractional indices - no rounding!
+        let msToSamples = samplesPerSecond / 1000.0
+        let y0StartSample = y0StartTimeMs * msToSamples
+        let y0EndSample = y0EndTimeMs * msToSamples
+        let crStartSample = crStartTimeMs * msToSamples
+        let crEndSample = crEndTimeMs * msToSamples
+        let cbStartSample = cbStartTimeMs * msToSamples
+        let cbEndSample = cbEndTimeMs * msToSamples
+        let y1StartSample = y1StartTimeMs * msToSamples
+        let y1EndSample = y1StartSample + (yDurationMs * msToSamples)
         
-        // Decode all components
-        let y0Values = decodeComponent(
+        // Decode all components using time-based continuous indexing
+        // Each component spans from its start time to end time
+        let y0Values = decodeComponentTimeBased(
             frequencies: frequencies,
-            startIndex: y0StartIndex,
-            sampleCount: ySamples,
+            startSample: y0StartSample,
+            endSample: y0EndSample,
             pixelCount: width
         )
         
-        let crValues = decodeComponent(
+        let crValues = decodeComponentTimeBased(
             frequencies: frequencies,
-            startIndex: crStartIndex,
-            sampleCount: crSamples,
+            startSample: crStartSample,
+            endSample: crEndSample,
             pixelCount: width
         )
         
-        let cbValues = decodeComponent(
+        let cbValues = decodeComponentTimeBased(
             frequencies: frequencies,
-            startIndex: cbStartIndex,
-            sampleCount: cbSamples,
+            startSample: cbStartSample,
+            endSample: cbEndSample,
             pixelCount: width
         )
         
-        let y1Values = decodeComponent(
+        let y1Values = decodeComponentTimeBased(
             frequencies: frequencies,
-            startIndex: y1StartIndex,
-            sampleCount: ySamples,
+            startSample: y1StartSample,
+            endSample: y1EndSample,
             pixelCount: width
         )
         
@@ -194,50 +216,71 @@ extension PD180Mode {
         return lineIndex % 2 == 0 ? frame[0] : frame[1]
     }
     
-    /// Decode a single component (Y, Cb, or Cr) from frequency data.
+    /// Decode a single component (Y, Cb, or Cr) using TIME-BASED fractional sample indexing.
     ///
-    /// Maps frequencies to normalized pixel values (0.0...1.0).
+    /// This is the core of the time-based decoding approach that eliminates horizontal shear
+    /// and vertical banding. Key principles:
+    ///
+    /// 1. **No Integer Rounding**: Sample positions are computed as fractional Double values
+    /// 2. **Linear Interpolation**: Sub-sample precision via interpolation between adjacent samples
+    /// 3. **Time Continuity**: Each pixel maps to an exact time offset with no phase resets
+    /// 4. **Strict Bounds**: Clamping ensures we never read outside the active video window
+    ///
+    /// TIMING MODEL:
+    /// - A component spans from startSample to endSample (fractional indices)
+    /// - Each of the `pixelCount` pixels occupies an equal time slice
+    /// - Pixel i is centered at: startSample + (i + 0.5) * sampleSpan / pixelCount
+    /// - We interpolate between floor(pos) and ceil(pos) to get the exact value
     ///
     /// - Parameters:
-    ///   - frequencies: Full array of detected frequencies for the entire line
-    ///   - startIndex: Index in frequencies array where this component starts
-    ///   - sampleCount: Number of samples covering this component
+    ///   - frequencies: Full array of detected frequencies for the entire frame
+    ///   - startSample: Fractional sample index where this component starts
+    ///   - endSample: Fractional sample index where this component ends
     ///   - pixelCount: Number of pixels to decode (typically 640)
     ///
     /// - Returns: Array of normalized pixel values (0.0...1.0), length = pixelCount
-    private func decodeComponent(
+    private func decodeComponentTimeBased(
         frequencies: [Double],
-        startIndex: Int,
-        sampleCount: Int,
+        startSample: Double,
+        endSample: Double,
         pixelCount: Int
     ) -> [Double] {
         var values = [Double](repeating: 0.0, count: pixelCount)
         
-        // Calculate how many samples per pixel
-        let samplesPerPixel = Double(sampleCount) / Double(pixelCount)
+        // Calculate the time span of this component in samples (fractional)
+        let componentDurationSamples = endSample - startSample
+        
+        // Each pixel occupies an equal fraction of the component's time span
+        let samplesPerPixel = componentDurationSamples / Double(pixelCount)
         
         for pixelIndex in 0..<pixelCount {
-            // Calculate sample range for this pixel
-            let sampleStart = startIndex + Int(Double(pixelIndex) * samplesPerPixel)
-            let sampleEnd = startIndex + Int(Double(pixelIndex + 1) * samplesPerPixel)
+            // Calculate the EXACT fractional sample position for this pixel's CENTER
+            // Using center position (pixelIndex + 0.5) provides better sampling
+            let pixelCenterPosition = startSample + (Double(pixelIndex) + 0.5) * samplesPerPixel
             
-            // Ensure we don't go out of bounds
-            guard sampleStart < frequencies.count && sampleEnd <= frequencies.count else {
-                values[pixelIndex] = 0.5 // Default to mid-value
+            // Clamp position strictly within the frequency array bounds
+            // This prevents reading outside the active video window
+            let clampedPosition = min(max(pixelCenterPosition, 0.0), Double(frequencies.count - 1))
+            
+            // Perform linear interpolation between adjacent samples
+            let lowerIndex = Int(clampedPosition)
+            let upperIndex = min(lowerIndex + 1, frequencies.count - 1)
+            let fraction = clampedPosition - Double(lowerIndex)
+            
+            // Bounds check (defensive programming)
+            guard lowerIndex >= 0 && lowerIndex < frequencies.count &&
+                  upperIndex >= 0 && upperIndex < frequencies.count else {
+                values[pixelIndex] = 0.5 // Fallback to mid-gray
                 continue
             }
             
-            // Average the frequencies in this pixel's sample range
-            let pixelFrequencies = frequencies[sampleStart..<sampleEnd]
-            guard !pixelFrequencies.isEmpty else {
-                values[pixelIndex] = 0.5
-                continue
-            }
+            // Linear interpolation: freq = (1-t)*f0 + t*f1
+            let lowerFreq = frequencies[lowerIndex]
+            let upperFreq = frequencies[upperIndex]
+            let interpolatedFreq = lowerFreq * (1.0 - fraction) + upperFreq * fraction
             
-            let avgFrequency = pixelFrequencies.reduce(0.0, +) / Double(pixelFrequencies.count)
-            
-            // Map frequency to normalized value (0.0...1.0)
-            values[pixelIndex] = frequencyToValue(avgFrequency)
+            // Map interpolated frequency to normalized pixel value
+            values[pixelIndex] = frequencyToValue(interpolatedFreq)
         }
         
         return values

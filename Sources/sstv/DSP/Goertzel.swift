@@ -92,6 +92,9 @@ struct ToneDetector {
     /// Individual Goertzel detectors for each frequency
     private let detectors: [Goertzel]
     
+    /// Frequency step between bins (for interpolation)
+    private let frequencyStep: Double
+    
     /// Initialize tone detector for multiple frequencies
     ///
     /// - Parameters:
@@ -102,6 +105,13 @@ struct ToneDetector {
         self.frequencies = frequencies
         self.sampleRate = sampleRate
         self.windowSize = windowSize
+        
+        // Calculate frequency step for interpolation
+        if frequencies.count >= 2 {
+            self.frequencyStep = frequencies[1] - frequencies[0]
+        } else {
+            self.frequencyStep = 1.0
+        }
         
         self.detectors = frequencies.map { freq in
             Goertzel(frequency: freq, sampleRate: sampleRate, windowSize: windowSize)
@@ -127,6 +137,55 @@ struct ToneDetector {
         return (frequencies[maxIndex], maxMagnitude)
     }
     
+    /// Detect the frequency with parabolic interpolation for sub-bin accuracy
+    ///
+    /// Uses the magnitudes of the peak bin and its neighbors to estimate
+    /// the true frequency with much higher precision than bin width allows.
+    /// This is essential for accurate SSTV pixel decoding.
+    ///
+    /// - Parameter samples: Audio samples to analyze
+    /// - Returns: Interpolated frequency with sub-bin precision
+    func detectInterpolated(samples: [Double]) -> Double {
+        // Get all magnitudes
+        let magnitudes = detectAll(samples: samples)
+        
+        // Find peak bin
+        var maxMagnitude = 0.0
+        var maxIndex = 0
+        for (index, magnitude) in magnitudes.enumerated() {
+            if magnitude > maxMagnitude {
+                maxMagnitude = magnitude
+                maxIndex = index
+            }
+        }
+        
+        // If at edge or single bin, return bin frequency
+        guard maxIndex > 0 && maxIndex < magnitudes.count - 1 else {
+            return frequencies[maxIndex]
+        }
+        
+        // Parabolic interpolation using the three points around the peak
+        // The peak of the parabola is at offset p from the center bin:
+        // p = 0.5 * (left - right) / (left - 2*center + right)
+        let left = magnitudes[maxIndex - 1]
+        let center = magnitudes[maxIndex]
+        let right = magnitudes[maxIndex + 1]
+        
+        // Guard against division by zero
+        let denominator = left - 2.0 * center + right
+        guard abs(denominator) > 1e-10 else {
+            return frequencies[maxIndex]
+        }
+        
+        let offset = 0.5 * (left - right) / denominator
+        
+        // Clamp offset to reasonable range (-0.5 to 0.5)
+        let clampedOffset = max(-0.5, min(0.5, offset))
+        
+        // Interpolated frequency
+        return frequencies[maxIndex] + clampedOffset * frequencyStep
+    }
+    
     /// Detect magnitudes for all frequencies
     ///
     /// - Parameter samples: Audio samples to analyze
@@ -139,7 +198,8 @@ struct ToneDetector {
 /// Sliding window frequency detector for continuous SSTV decoding
 ///
 /// This processes audio samples in a sliding window fashion, detecting
-/// the dominant frequency at regular intervals.
+/// the dominant frequency at regular intervals using parabolic interpolation
+/// for sub-bin accuracy.
 struct FrequencyTracker {
     /// Sample rate (in Hz)
     let sampleRate: Double
@@ -170,14 +230,14 @@ struct FrequencyTracker {
     ///   - stepSize: Step between detections in samples
     ///   - minFrequency: Minimum frequency to detect in Hz
     ///   - maxFrequency: Maximum frequency to detect in Hz
-    ///   - binCount: Number of frequency bins to use
+    ///   - binCount: Number of frequency bins to use (higher = more accurate but slower)
     init(
         sampleRate: Double,
         windowSize: Int = 512,
-        stepSize: Int = 256,
+        stepSize: Int = 128,
         minFrequency: Double = 1100.0,
         maxFrequency: Double = 2400.0,
-        binCount: Int = 128
+        binCount: Int = 256  // Increased from 128 for better resolution
     ) {
         self.sampleRate = sampleRate
         self.windowSize = windowSize
@@ -199,10 +259,10 @@ struct FrequencyTracker {
         )
     }
     
-    /// Track frequencies across the entire audio signal
+    /// Track frequencies across the entire audio signal using parabolic interpolation
     ///
     /// - Parameter samples: Complete audio signal (mono)
-    /// - Returns: Array of detected frequencies, one per step
+    /// - Returns: Array of detected frequencies (interpolated), one per step
     func track(samples: [Double]) -> [Double] {
         var frequencies = [Double]()
         
@@ -217,7 +277,8 @@ struct FrequencyTracker {
             let offset = step * stepSize
             let windowSamples = Array(samples[offset..<offset + windowSize])
             
-            let (freq, _) = detector.detectStrongest(samples: windowSamples)
+            // Use interpolated detection for sub-bin accuracy
+            let freq = detector.detectInterpolated(samples: windowSamples)
             frequencies.append(freq)
             
             // Update progress every 15 seconds or on first/last step
