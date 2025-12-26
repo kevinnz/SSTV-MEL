@@ -37,7 +37,7 @@ SSTV Protocol (VIS detection, sync, modes)
     ↓
 Image Buffer (pixels, YCbCr color space)
     ↓
-PNG Writer
+Image Writer (PNG/JPEG output)
 ```
 
 Key principles:
@@ -75,6 +75,7 @@ sstv/
 │     │  └─ PD180Mode.swift
 │     ├─ Image/
 │     │  ├─ ImageBuffer.swift
+│     │  ├─ ImageWriter.swift
 │     │  └─ PNGWriter.swift
 │     └─ Util/
 │        └─ ImageComparison.swift
@@ -107,8 +108,14 @@ swift build
 Run the decoder:
 
 ```bash
-# Basic usage (auto-detects mode via VIS code)
+# Basic usage (auto-detects mode via VIS code, PNG output)
 swift run sstv input.wav
+
+# Output as JPEG (auto-detected from extension)
+swift run sstv input.wav output.jpg
+
+# Force JPEG format with custom quality
+swift run sstv input.wav output.png --format jpeg --quality 0.95
 
 # Custom output file
 swift run sstv input.wav output.png
@@ -119,7 +126,52 @@ swift run sstv input.wav --mode PD180
 ```
 
 ---
+## 🖼️ Output Formats
 
+The decoder supports both **PNG** and **JPEG** output formats.
+
+### Format Selection
+
+The output format is automatically detected from the file extension:
+- `.png` → PNG format
+- `.jpg` or `.jpeg` → JPEG format
+
+You can also explicitly specify the format using the `--format` or `-f` option:
+
+```bash
+# Force JPEG format even with .png extension
+swift run sstv input.wav output.png --format jpeg
+
+# Force PNG format with .jpg extension
+swift run sstv input.wav output.jpg --format png
+```
+
+### JPEG Quality
+
+When outputting JPEG, you can control the compression quality using `--quality` or `-q`:
+
+```bash
+# High quality JPEG (larger file)
+swift run sstv input.wav output.jpg --quality 0.95
+
+# Lower quality JPEG (smaller file)
+swift run sstv input.wav output.jpg --quality 0.7
+
+# Default quality is 0.9
+swift run sstv input.wav output.jpg
+```
+
+**Quality values:**
+- `0.0` = lowest quality, smallest file
+- `1.0` = highest quality, largest file
+- `0.9` = default (good balance)
+- Recommended range: `0.85` - `0.95` for SSTV images
+
+**Format recommendations:**
+- **PNG**: Lossless compression, best for archival and analysis
+- **JPEG**: Lossy compression, smaller files, good for sharing
+
+---
 ## 🎛 Phase and Skew Adjustment
 
 SSTV images often need fine-tuning due to timing variations in recordings. The decoder provides two adjustment options:
@@ -155,6 +207,12 @@ Corrects **diagonal slanting** caused by sample rate mismatch between transmitte
 ```bash
 # Shift image 11ms to the right (good for many PD120 recordings)
 swift run sstv input.wav -p 11
+
+# Output as JPEG with adjustments
+swift run sstv input.wav output.jpg -p 11 -s 0.015
+
+# High quality JPEG output
+swift run sstv input.wav output.jpg -q 0.95 -p 11
 
 # Correct skew of 0.015ms per line
 swift run sstv input.wav -s 0.015
@@ -242,6 +300,7 @@ Completed:
 * ✅ PD120 decode with YCbCr color space
 * ✅ PD180 decode with YCbCr color space
 * ✅ PNG output
+* ✅ JPEG output with quality control
 * ✅ FM demodulation for accurate frequency tracking
 * ✅ Phase offset and skew correction
 
