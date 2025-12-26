@@ -229,12 +229,14 @@ struct FMDemodulator {
         // Move valid convolution results to the center without full array copy
         let validLength = n - filterTaps + 1
         if validLength > 0 && halfTaps > 0 {
-            // Shift values in-place from the beginning to the center
+            // Shift values in-place from end to beginning (backward iteration)
+            // to avoid overwriting data that hasn't been moved yet
             for i in stride(from: validLength - 1, through: 0, by: -1) {
                 output[i + halfTaps] = output[i]
-                if i < halfTaps {
-                    output[i] = 0.0
-                }
+            }
+            // Zero out the beginning
+            for i in 0..<halfTaps {
+                output[i] = 0.0
             }
             // Zero out any remaining tail
             for i in (halfTaps + validLength)..<n {
