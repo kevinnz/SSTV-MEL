@@ -33,8 +33,13 @@ struct VISDetector {
     /// - Parameters:
     ///   - samples: Audio samples (mono)
     ///   - sampleRate: Sample rate in Hz
+    ///   - progressHandler: Optional callback for progress updates (0.0...1.0)
     /// - Returns: VIS detection result, or nil if not found
-    func detect(samples: [Double], sampleRate: Double) -> VISResult? {
+    func detect(
+        samples: [Double],
+        sampleRate: Double,
+        progressHandler: ((Double) -> Void)? = nil
+    ) -> VISResult? {
         print("  Scanning for VIS code...")
         
         // Look for leader tone (1900 Hz for ~300ms)
@@ -58,7 +63,14 @@ struct VISDetector {
         // Track first ~30 seconds (VIS might be later in the file)
         let searchSamples = min(samples.count, Int(30.0 * sampleRate))
         print("  Analyzing first 30 seconds...")
+        
+        // Report initial progress
+        progressHandler?(0.0)
+        
         let searchFreqs = tracker.track(samples: Array(samples[0..<searchSamples]))
+        
+        // Report progress after tracking
+        progressHandler?(0.5)
         
         // Look for sustained 1900 Hz tone
         let tolerance = 100.0 // Increased tolerance
@@ -70,6 +82,12 @@ struct VISDetector {
         var attemptCount = 0
         
         for (index, freq) in searchFreqs.enumerated() {
+            // Report progress periodically
+            if index % 1000 == 0 {
+                let progress = 0.5 + (Double(index) / Double(searchFreqs.count) * 0.5)
+                progressHandler?(progress)
+            }
+            
             if abs(freq - leaderFreq) < tolerance {
                 if leaderStart == -1 {
                     leaderStart = index
@@ -88,6 +106,7 @@ struct VISDetector {
                         stepSize: stepSize,
                         sampleRate: sampleRate
                     ) {
+                        progressHandler?(1.0)
                         let startSample = visStartStep * stepSize
                         let modeName = Self.knownModes[code] ?? "Unknown"
                         print("  Decoded VIS code: 0x\(String(code, radix: 16)) (\(modeName))")
@@ -104,6 +123,7 @@ struct VISDetector {
             }
         }
         
+        progressHandler?(1.0)
         print("  VIS code not found in signal")
         return nil
     }

@@ -48,9 +48,15 @@ public struct SSTVDecoder {
     /// - Parameters:
     ///   - audio: WAV audio file containing SSTV signal
     ///   - options: Decoding options for phase and skew adjustment
+    ///   - progressHandler: Optional callback for progress updates
     /// - Returns: Decoded image buffer
     /// - Throws: DecodingError if decoding fails
-    public func decode(audio: WAVFile, options: DecodingOptions = .default) throws -> ImageBuffer {
+    public func decode(
+        audio: WAVFile,
+        options: DecodingOptions = .default,
+        progressHandler: ProgressHandler? = nil
+    ) throws -> ImageBuffer {
+        let startTime = Date()
         print("Decoding SSTV signal...")
         print("  Sample rate: \(audio.sampleRate) Hz")
         print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
@@ -63,7 +69,19 @@ public struct SSTVDecoder {
         let visDetector = VISDetector()
         
         let mode: SSTVModeDecoder
-        if let visResult = visDetector.detect(samples: samples, sampleRate: audio.sampleRate) {
+        if let visResult = visDetector.detect(
+            samples: samples,
+            sampleRate: audio.sampleRate,
+            progressHandler: { visProgress in
+                let elapsed = Date().timeIntervalSince(startTime)
+                let progress = DecodingProgress(
+                    phase: .visDetection(progress: visProgress),
+                    overallProgress: visProgress * 0.1,  // VIS is ~10% of total
+                    elapsedSeconds: elapsed
+                )
+                progressHandler?(progress)
+            }
+        ) {
             print("  VIS Code: 0x\(String(visResult.code, radix: 16))")
             print("  Detected Mode: \(visResult.mode)")
             
@@ -83,7 +101,14 @@ public struct SSTVDecoder {
         
         print("  Resolution: \(mode.width)×\(mode.height)")
         
-        return try decodeWithMode(audio: audio, samples: samples, mode: mode, options: options)
+        return try decodeWithMode(
+            audio: audio,
+            samples: samples,
+            mode: mode,
+            options: options,
+            startTime: startTime,
+            progressHandler: progressHandler
+        )
     }
     
     /// Decode SSTV audio with a forced mode
@@ -92,9 +117,16 @@ public struct SSTVDecoder {
     ///   - audio: WAV audio file containing SSTV signal
     ///   - forcedMode: Mode name to force (e.g., "PD120", "PD180")
     ///   - options: Decoding options for phase and skew adjustment
+    ///   - progressHandler: Optional callback for progress updates
     /// - Returns: Decoded image buffer
     /// - Throws: DecodingError if decoding fails or mode is unknown
-    public func decode(audio: WAVFile, forcedMode: String, options: DecodingOptions = .default) throws -> ImageBuffer {
+    public func decode(
+        audio: WAVFile,
+        forcedMode: String,
+        options: DecodingOptions = .default,
+        progressHandler: ProgressHandler? = nil
+    ) throws -> ImageBuffer {
+        let startTime = Date()
         print("Decoding SSTV signal...")
         print("  Sample rate: \(audio.sampleRate) Hz")
         print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
@@ -116,7 +148,14 @@ public struct SSTVDecoder {
         
         let samples = audio.monoSamples
         
-        return try decodeWithMode(audio: audio, samples: samples, mode: mode, options: options)
+        return try decodeWithMode(
+            audio: audio,
+            samples: samples,
+            mode: mode,
+            options: options,
+            startTime: startTime,
+            progressHandler: progressHandler
+        )
     }
     
     /// Decode with a specific mode using FM demodulation
@@ -130,13 +169,23 @@ public struct SSTVDecoder {
         audio: WAVFile,
         samples: [Double],
         mode: SSTVModeDecoder,
-        options: DecodingOptions = .default
+        options: DecodingOptions = .default,
+        startTime: Date,
+        progressHandler: ProgressHandler?
     ) throws -> ImageBuffer {
         print("Demodulating FM signal...")
         
         // Use FM demodulation for accurate frequency tracking
         let fmTracker = FMFrequencyTracker(sampleRate: audio.sampleRate)
-        let frequencies = fmTracker.track(samples: samples)
+        let frequencies = fmTracker.track(samples: samples) { fmProgress in
+            let elapsed = Date().timeIntervalSince(startTime)
+            let progress = DecodingProgress(
+                phase: .fmDemodulation(progress: fmProgress),
+                overallProgress: 0.1 + (fmProgress * 0.2),  // FM demod is ~20%, starts after VIS (10%)
+                elapsedSeconds: elapsed
+            )
+            progressHandler?(progress)
+        }
         
         // Calculate samples per frame (each frame contains linesPerFrame image lines)
         let samplesPerFrame = Int(mode.frameDurationMs * audio.sampleRate / 1000.0)
@@ -146,6 +195,17 @@ public struct SSTVDecoder {
         
         // Find start of SSTV signal (look for sync tone patterns)
         print("Searching for SSTV signal start...")
+        
+        // Report progress for signal search
+        let elapsed = Date().timeIntervalSince(startTime)
+        let searchProgress = DecodingProgress(
+            phase: .signalSearch,
+            overallProgress: 0.3,  // 30% after VIS and FM demod
+            elapsedSeconds: elapsed,
+            modeName: mode.name
+        )
+        progressHandler?(searchProgress)
+        
         let startSample = findSignalStartFM(
             frequencies: frequencies,
             mode: mode,
@@ -163,8 +223,8 @@ public struct SSTVDecoder {
         // CONTINUOUS DECODING with sample-level precision
         print("Decoding frames (FM demodulation, sample-level precision)...")
         
-        let startTime = Date()
-        var lastUpdateTime = startTime
+        let decodeStartTime = Date()
+        var lastUpdateTime = decodeStartTime
         let updateIntervalSeconds: TimeInterval = 15.0
         
         for frameIndex in 0..<maxFrames {
@@ -203,14 +263,25 @@ public struct SSTVDecoder {
             if timeSinceLastUpdate >= updateIntervalSeconds || frameIndex == 0 || frameIndex == maxFrames - 1 {
                 lastUpdateTime = currentTime
                 
-                let progress = Double(frameIndex + 1) / Double(maxFrames)
-                let elapsed = currentTime.timeIntervalSince(startTime)
-                let estimated = elapsed / progress
+                let frameProgress = Double(frameIndex + 1) / Double(maxFrames)
+                let elapsed = currentTime.timeIntervalSince(decodeStartTime)
+                let estimated = elapsed / frameProgress
                 let remaining = estimated - elapsed
                 
-                let progressBar = makeProgressBar(progress: progress, width: 30)
-                let progressPercent = Int(progress * 100)
+                // Call progress handler
                 let linesDecoded = (frameIndex + 1) * mode.linesPerFrame
+                let totalElapsed = currentTime.timeIntervalSince(startTime)
+                let decodeProgress = DecodingProgress(
+                    phase: .frameDecoding(linesDecoded: linesDecoded, totalLines: mode.height),
+                    overallProgress: 0.3 + (frameProgress * 0.7),  // Decoding is remaining 70%
+                    elapsedSeconds: totalElapsed,
+                    estimatedSecondsRemaining: remaining,
+                    modeName: mode.name
+                )
+                progressHandler?(decodeProgress)
+                
+                let progressBar = makeProgressBar(progress: frameProgress, width: 30)
+                let progressPercent = Int(frameProgress * 100)
                 
                 // Clear line and print progress
                 print("\r  \(progressBar) \(progressPercent)% (\(linesDecoded)/\(mode.height)) | Elapsed: \(formatTime(elapsed)) | ETA: \(formatTime(remaining))", terminator: "")

@@ -97,9 +97,11 @@ struct FMDemodulator {
     /// 3. Compute phase: φ = atan2(Q, I)
     /// 4. Compute frequency from phase derivative: f = dφ/dt / (2π)
     ///
-    /// - Parameter samples: Input audio samples (real-valued)
+    /// - Parameters:
+    ///   - samples: Input audio samples (real-valued)
+    ///   - progressHandler: Optional callback for progress updates (0.0...1.0)
     /// - Returns: Array of instantaneous frequencies in Hz for each sample
-    func demodulate(samples: [Double]) -> [Double] {
+    func demodulate(samples: [Double], progressHandler: ((Double) -> Void)? = nil) -> [Double] {
         let n = samples.count
         guard n > filterTaps else { return [Double](repeating: centerFrequency, count: n) }
         
@@ -163,8 +165,15 @@ struct FMDemodulator {
         var frequencies = [Double](repeating: centerFrequency, count: n)
         
         let halfTaps = filterTaps / 2
+        let updateInterval = max(1, n / 100)  // Report every 1%
         
         for i in (halfTaps + 1)..<(n - halfTaps) {
+            // Report progress periodically
+            if updateInterval > 0 && i % updateInterval == 0 {
+                let progress = Double(i) / Double(n)
+                progressHandler?(progress)
+            }
+            
             let iCurr = iFiltered[i]
             let qCurr = qFiltered[i]
             let iPrev = iFiltered[i - 1]
@@ -272,17 +281,25 @@ struct FMFrequencyTracker {
     
     /// Track frequencies across the entire audio signal using quadrature FM demodulation
     ///
-    /// - Parameter samples: Complete audio signal (mono)
+    /// - Parameters:
+    ///   - samples: Complete audio signal (mono)
+    ///   - progressHandler: Optional callback for progress updates (0.0...1.0)
     /// - Returns: Array of detected frequencies, one per sample
-    func track(samples: [Double]) -> [Double] {
+    func track(samples: [Double], progressHandler: ((Double) -> Void)? = nil) -> [Double] {
         print("  Using quadrature FM demodulation (ADR-001 compliant)...")
         print("  Center frequency: \(demodulator.centerFrequency) Hz")
         print("  Filter cutoff: \(demodulator.filterCutoff) Hz")
         
         let startTime = Date()
         
+        // Report initial progress
+        progressHandler?(0.0)
+        
         // Demodulate entire signal
-        let frequencies = demodulator.demodulate(samples: samples)
+        let frequencies = demodulator.demodulate(samples: samples, progressHandler: progressHandler)
+        
+        // Report completion
+        progressHandler?(1.0)
         
         let elapsed = Date().timeIntervalSince(startTime)
         print("  FM demodulation complete in \(String(format: "%.1f", elapsed))s")
