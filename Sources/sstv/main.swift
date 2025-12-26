@@ -65,8 +65,7 @@ func main() {
     // Create decoding options (values will be clamped automatically)
     let options = DecodingOptions(
         phaseOffsetMs: phaseOffsetMs,
-        skewMsPerLine: skewMsPerLine,
-        debug: debugMode
+        skewMsPerLine: skewMsPerLine
     )
     
     // Show phase/skew values and warn if clamped

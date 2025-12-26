@@ -53,12 +53,6 @@ struct SSTVDecoder {
         print("  Sample rate: \(audio.sampleRate) Hz")
         print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
         
-        // Print adjustment info if non-default
-        if options.phaseOffsetMs != 0.0 || options.skewMsPerLine != 0.0 {
-            print("  Phase offset: \(String(format: "%.2f", options.phaseOffsetMs)) ms")
-            print("  Skew: \(String(format: "%.4f", options.skewMsPerLine)) ms/line")
-        }
-        
         // Extract mono signal
         let samples = audio.monoSamples
         
@@ -103,12 +97,6 @@ struct SSTVDecoder {
         print("  Sample rate: \(audio.sampleRate) Hz")
         print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
         print("  Forced Mode: \(forcedMode)")
-        
-        // Print adjustment info if non-default
-        if options.phaseOffsetMs != 0.0 || options.skewMsPerLine != 0.0 {
-            print("  Phase offset: \(String(format: "%.2f", options.phaseOffsetMs)) ms")
-            print("  Skew: \(String(format: "%.4f", options.skewMsPerLine)) ms/line")
-        }
         
         let mode: SSTVModeDecoder
         switch forcedMode.uppercased() {
