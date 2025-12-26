@@ -12,6 +12,7 @@ This project is intentionally **CLI-first**, **UI-agnostic**, and **test-driven*
 - Support common modes (initially):
   - Robot36
   - PD120
+  - PD180
 - Produce deterministic, testable output
 - Keep DSP, protocol logic, and image handling cleanly separated
 - Avoid premature GUI decisions
@@ -99,6 +100,7 @@ Run the decoder:
 
 ```bash
 swift run sstv input.wav --mode PD120 --out output.png
+swift run sstv input.wav --mode PD180 --out output.png
 ```
 
 (Exact CLI flags may evolve — see `--help`.)
@@ -153,6 +155,7 @@ They exist to prevent subtle DSP breakage and architectural drift.
 
 * [x] Robot36 (planned)
 * [x] PD120 (planned)
+* [x] PD180 (planned)
 * [ ] Additional Robot modes
 * [ ] Additional PD modes
 
@@ -168,6 +171,7 @@ Near-term:
 * VIS decoding
 * Robot36 decode
 * PD120 decode
+* PD180 decode
 * PNG output
 
 Later:
