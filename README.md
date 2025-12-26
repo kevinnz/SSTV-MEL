@@ -105,6 +105,31 @@ swift run sstv input.wav --mode PD180 --out output.png
 
 (Exact CLI flags may evolve — see `--help`.)
 
+### Image Adjustment Options
+
+SSTV images often suffer from timing-related distortions. The decoder supports two adjustment options to correct these:
+
+**Phase offset** (`--phase`, `-p`) — Horizontal shift in milliseconds
+- Corrects horizontal alignment issues caused by sync timing errors
+- Positive values shift image right, negative shift left
+- Typical range: -5.0 to +5.0 ms (max: ±50.0 ms)
+
+**Skew correction** (`--skew`, `-s`) — Timing drift in milliseconds per line
+- Corrects diagonal slanting caused by sample rate mismatch
+- Positive values correct clockwise slant
+- Typical range: -0.5 to +0.5 ms/line (max: ±1.0 ms/line)
+
+```bash
+# Shift image 1.5ms to the right
+swift run sstv input.wav -p 1.5
+
+# Correct skew of 0.02ms per line
+swift run sstv input.wav -s 0.02
+
+# Combined adjustment
+swift run sstv input.wav -p 1.0 -s -0.01
+```
+
 ---
 
 ## 🧪 Testing
