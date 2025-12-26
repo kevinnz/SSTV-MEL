@@ -99,36 +99,70 @@ swift build
 Run the decoder:
 
 ```bash
-swift run sstv input.wav --mode PD120 --out output.png
-swift run sstv input.wav --mode PD180 --out output.png
+# Basic usage (auto-detects mode, defaults to PD120)
+.build/release/sstv input.wav -o output.png
+
+# Force a specific mode
+.build/release/sstv input.wav -o output.png --mode PD120
+.build/release/sstv input.wav -o output.png --mode PD180
 ```
 
-(Exact CLI flags may evolve — see `--help`.)
+---
 
-### Image Adjustment Options
+## 🎛 Phase and Skew Adjustment
 
-SSTV images often suffer from timing-related distortions. The decoder supports two adjustment options to correct these:
+SSTV images often need fine-tuning due to timing variations in recordings. The decoder provides two adjustment options:
 
-**Phase offset** (`--phase`, `-p`) — Horizontal shift in milliseconds
-- Corrects horizontal alignment issues caused by sync timing errors
-- Positive values shift image right, negative shift left
-- Typical range: -5.0 to +5.0 ms (max: ±50.0 ms)
+### Phase Offset (`-p`, `--phase`)
 
-**Skew correction** (`--skew`, `-s`) — Timing drift in milliseconds per line
-- Corrects diagonal slanting caused by sample rate mismatch
-- Positive values correct clockwise slant
-- Typical range: -0.5 to +0.5 ms/line (max: ±1.0 ms/line)
+Corrects **horizontal alignment** issues caused by sync timing errors.
+
+| Value | Effect |
+|-------|--------|
+| Positive | Shifts image content right |
+| Negative | Shifts image content left |
+
+- **Typical range**: -15 to +15 ms
+- **Maximum**: ±50 ms
+- **Good starting point for PD120**: `11` ms
+
+### Skew Correction (`-s`, `--skew`)
+
+Corrects **diagonal slanting** caused by sample rate mismatch between transmitter and receiver.
+
+| Value | Effect |
+|-------|--------|
+| Positive | Corrects clockwise slant |
+| Negative | Corrects counter-clockwise slant |
+
+- **Typical range**: -0.05 to +0.05 ms/line
+- **Maximum**: ±1.0 ms/line
+- **Good starting point**: `0.02` ms/line
+
+### Examples
 
 ```bash
-# Shift image 1.5ms to the right
-swift run sstv input.wav -p 1.5
+# Shift image 11ms to the right (good for many PD120 recordings)
+.build/release/sstv input.wav -o output.png -p 11
 
 # Correct skew of 0.02ms per line
-swift run sstv input.wav -s 0.02
+.build/release/sstv input.wav -o output.png -s 0.02
 
-# Combined adjustment
-swift run sstv input.wav -p 1.0 -s -0.01
+# Combined adjustment (recommended for PD120)
+.build/release/sstv input.wav -o output.png -p 11 -s 0.02
+
+# Force PD180 mode with adjustments
+.build/release/sstv input.wav -o output.png --mode PD180 -p 5 -s 0.01
 ```
+
+### Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| Image shifted horizontally | Adjust `-p` (try values between -15 and +15) |
+| Vertical lines appear slanted | Adjust `-s` (try values between -0.05 and +0.05) |
+| Wrong colors or stretched image | Force correct mode with `--mode PD120` or `--mode PD180` |
+| Image looks compressed/expanded | You may be using wrong mode; try the other one |
 
 ---
 
