@@ -31,6 +31,11 @@ struct FMDemodulator {
     private let filterTaps: Int = 127
     private var filterCoeffs: [Double] = []
     
+    #if canImport(Accelerate)
+    /// Reversed filter coefficients for vDSP_conv (computed once at initialization)
+    private var reversedFilterCoeffs: [Double] = []
+    #endif
+    
     init(sampleRate: Double) {
         self.sampleRate = sampleRate
         self.filterCoeffs = Self.designLowPassFilter(
@@ -38,6 +43,10 @@ struct FMDemodulator {
             sampleRate: sampleRate,
             taps: filterTaps
         )
+        #if canImport(Accelerate)
+        // Pre-compute reversed coefficients for vDSP_conv
+        self.reversedFilterCoeffs = Array(filterCoeffs.reversed())
+        #endif
     }
     
     /// Design a low-pass FIR filter using windowed sinc method
@@ -207,12 +216,11 @@ struct FMDemodulator {
         #if canImport(Accelerate)
         // Use vDSP_conv for efficient convolution on Apple platforms
         // vDSP_conv performs: output[i] = Σ(signal[i+j] * filter[j])
-        // Need to reverse filter coefficients for proper convolution
-        var reversedFilter = filterCoeffs.reversed()
+        // Using pre-computed reversed filter coefficients
         
         // Convolve the entire signal with the filter
         vDSP_convD(samples, 1,
-                   reversedFilter, 1,
+                   reversedFilterCoeffs, 1,
                    &output, 1,
                    vDSP_Length(n - filterTaps + 1),
                    vDSP_Length(filterTaps))
