@@ -1,5 +1,7 @@
 # SSTV — Swift Command-Line Decoder
 
+**By Kevin Alcock (ZL3XA)**
+
 A **command-line SSTV decoder written in Swift**, designed to convert recorded SSTV audio (WAV) into decoded images (PNG).
 
 This project is intentionally **CLI-first**, **UI-agnostic**, and **test-driven**, with the long-term goal of reuse inside a native macOS application.
@@ -261,7 +263,7 @@ Later:
 
 ## 📜 License
 
-TBD — assume “for experimentation and learning” until explicitly stated otherwise.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
