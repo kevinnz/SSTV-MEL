@@ -71,12 +71,12 @@ struct SSTVDecoder {
             case 0x5F:  // 95 decimal
                 mode = PD120Mode()
             default:
-                print("  Warning: Unsupported mode, defaulting to PD180")
-                mode = PD180Mode()
+                print("  Warning: Unsupported mode, defaulting to PD120")
+                mode = PD120Mode()
             }
         } else {
-            print("  VIS code not detected, defaulting to PD180")
-            mode = PD180Mode()
+            print("  VIS code not detected, defaulting to PD120")
+            mode = PD120Mode()
         }
         
         print("  Resolution: \(mode.width)×\(mode.height)")
