@@ -61,23 +61,33 @@ func main() {
     if let mode = forcedMode {
         print("Mode:   \(mode) (forced)")
     }
-    if phaseOffsetMs != 0.0 {
-        print("Phase:  \(String(format: "%.2f", phaseOffsetMs)) ms")
-    }
-    if skewMsPerLine != 0.0 {
-        print("Skew:   \(String(format: "%.4f", skewMsPerLine)) ms/line")
-    }
-    if debugMode {
-        print("Debug:  enabled")
-    }
-    print("")
     
-    // Create decoding options
+    // Create decoding options (values will be clamped automatically)
     let options = DecodingOptions(
         phaseOffsetMs: phaseOffsetMs,
         skewMsPerLine: skewMsPerLine,
         debug: debugMode
     )
+    
+    // Show phase/skew values and warn if clamped
+    if phaseOffsetMs != 0.0 || options.phaseOffsetMs != 0.0 {
+        if options.phaseOffsetMs != phaseOffsetMs {
+            print("Phase:  \(String(format: "%.2f", options.phaseOffsetMs)) ms (clamped from \(String(format: "%.2f", phaseOffsetMs)))")
+        } else {
+            print("Phase:  \(String(format: "%.2f", phaseOffsetMs)) ms")
+        }
+    }
+    if skewMsPerLine != 0.0 || options.skewMsPerLine != 0.0 {
+        if options.skewMsPerLine != skewMsPerLine {
+            print("Skew:   \(String(format: "%.4f", options.skewMsPerLine)) ms/line (clamped from \(String(format: "%.4f", skewMsPerLine)))")
+        } else {
+            print("Skew:   \(String(format: "%.4f", skewMsPerLine)) ms/line")
+        }
+    }
+    if debugMode {
+        print("Debug:  enabled")
+    }
+    print("")
     
     do {
         // Read WAV file
@@ -137,12 +147,12 @@ func printUsage() {
     print("  --phase, -p <MS>      Horizontal phase offset in milliseconds")
     print("                        Positive values shift image right, negative shift left")
     print("                        Use to correct horizontal alignment issues")
-    print("                        Typical range: -5.0 to +5.0")
+    print("                        Typical range: -5.0 to +5.0, max: ±50.0")
     print("")
     print("  --skew, -s <MS/LINE>  Skew correction in milliseconds per line")
     print("                        Corrects diagonal slanting caused by timing drift")
     print("                        Positive values correct clockwise slant")
-    print("                        Typical range: -0.5 to +0.5")
+    print("                        Typical range: -0.5 to +0.5, max: ±1.0")
     print("")
     print("  --debug, -d           Enable debug output (frequency analysis)")
     print("")
