@@ -130,6 +130,8 @@ targets: [
 
 ### Basic Usage
 
+#### Decode and Save to File
+
 ```swift
 import SSTVCore
 
@@ -147,6 +149,28 @@ let buffer = try decoder.decode(audio: audio, options: options)
 // Save as PNG or JPEG
 try ImageWriter.write(buffer: buffer, to: "output.png")
 try ImageWriter.write(buffer: buffer, to: "output.jpg", format: .jpeg(quality: 0.95))
+```
+
+#### Encode to Data (for UI Integration)
+
+```swift
+import SSTVCore
+
+// Decode as above...
+let buffer = try decoder.decode(audio: audio, options: options)
+
+// Encode to PNG data
+let pngData = try ImageWriter.encode(buffer: buffer, format: .png)
+
+// Encode to JPEG data with custom quality
+let jpegData = try ImageWriter.encode(buffer: buffer, format: .jpeg(quality: 0.9))
+
+// Use data with macOS/iOS UI
+#if os(macOS)
+imageView.image = NSImage(data: pngData)
+#elseif os(iOS)
+imageView.image = UIImage(data: pngData)
+#endif
 ```
 
 ### Platform Support
