@@ -226,13 +226,19 @@ struct FMDemodulator {
                    vDSP_Length(filterTaps))
         
         // Shift the output to align with input (account for filter delay)
-        // Copy the valid convolution results to the center of the output
+        // Move valid convolution results to the center without full array copy
         let validLength = n - filterTaps + 1
-        if validLength > 0 {
-            let tempOutput = output
-            output = [Double](repeating: 0.0, count: n)
-            for i in 0..<validLength {
-                output[i + halfTaps] = tempOutput[i]
+        if validLength > 0 && halfTaps > 0 {
+            // Shift values in-place from the beginning to the center
+            for i in stride(from: validLength - 1, through: 0, by: -1) {
+                output[i + halfTaps] = output[i]
+                if i < halfTaps {
+                    output[i] = 0.0
+                }
+            }
+            // Zero out any remaining tail
+            for i in (halfTaps + validLength)..<n {
+                output[i] = 0.0
             }
         }
         #else
