@@ -287,22 +287,9 @@ struct FrequencyTracker {
             
             if timeSinceLastUpdate >= updateIntervalSeconds || step == 0 || step == totalSteps - 1 {
                 lastUpdateTime = currentTime
-                
-                let progress = Double(step + 1) / Double(totalSteps)
-                let elapsed = currentTime.timeIntervalSince(startTime)
-                let estimated = elapsed / progress
-                let remaining = estimated - elapsed
-                
-                let progressBar = makeProgressBar(progress: progress, width: 30)
-                let progressPercent = Int(progress * 100)
-                
-                // Clear line and print progress
-                print("\r  \(progressBar) \(progressPercent)% | Elapsed: \(formatTime(elapsed)) | ETA: \(formatTime(remaining))", terminator: "")
-                fflush(stdout)
             }
         }
         
-        print("") // New line after progress
         return frequencies
     }
     

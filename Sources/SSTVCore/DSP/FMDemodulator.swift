@@ -301,10 +301,6 @@ struct FMFrequencyTracker {
         // Report completion
         progressHandler?(1.0)
         
-        let elapsed = Date().timeIntervalSince(startTime)
-        print("  FM demodulation complete in \(String(format: "%.1f", elapsed))s")
-        print("  Detected \(frequencies.count) frequency measurements")
-        
         return frequencies
     }
 }
