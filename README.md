@@ -9,10 +9,10 @@ This project is intentionally **CLI-first**, **UI-agnostic**, and **test-driven*
 ## ✨ Goals
 
 - Decode SSTV audio recordings into images
-- Support common modes (initially):
-  - Robot36
-  - PD120
-  - PD180
+- Support common modes:
+  - **PD120** ✅ Implemented
+  - **PD180** ✅ Implemented
+  - Robot36 (planned)
 - Produce deterministic, testable output
 - Keep DSP, protocol logic, and image handling cleanly separated
 - Avoid premature GUI decisions
@@ -29,17 +29,15 @@ Non-goals (for now):
 The project is structured as a **single Swift Package Manager executable**, with strong internal boundaries:
 
 ```
-
 Audio (WAV parsing)
-↓
-DSP (tone detection, timing)
-↓
-SSTV Protocol (VIS, sync, modes)
-↓
-Image Buffer (pixels, color space)
-↓
+    ↓
+DSP (FM demodulation, frequency tracking)
+    ↓
+SSTV Protocol (VIS detection, sync, modes)
+    ↓
+Image Buffer (pixels, YCbCr color space)
+    ↓
 PNG Writer
-
 ```
 
 Key principles:
@@ -55,7 +53,6 @@ This layout is deliberate so the core decoder can later be reused by a macOS app
 ## 📁 Project Layout
 
 ```
-
 sstv/
 ├─ Package.swift
 ├─ README.md
@@ -63,23 +60,34 @@ sstv/
 ├─ Sources/
 │  └─ sstv/
 │     ├─ main.swift
-│     ├─ CLI/
 │     ├─ Audio/
+│     │  └─ WAVReader.swift
 │     ├─ DSP/
+│     │  ├─ FMDemodulator.swift
+│     │  └─ Goertzel.swift
 │     ├─ SSTV/
+│     │  ├─ DecodingOptions.swift
+│     │  ├─ SSTVDecoder.swift
+│     │  ├─ SSTVMode.swift
+│     │  └─ VISDetector.swift
 │     ├─ Modes/
+│     │  ├─ PD120Mode.swift
+│     │  └─ PD180Mode.swift
 │     ├─ Image/
+│     │  ├─ ImageBuffer.swift
+│     │  └─ PNGWriter.swift
 │     └─ Util/
+│        └─ ImageComparison.swift
 │
 ├─ Tests/
 │  └─ sstvTests/
+│     ├─ GoldenFileTests.swift
+│     └─ PD120ModeTests.swift
 │
-└─ Samples/
-├─ *.wav
-└─ expected/
-└─ *.png
-
-````
+└─ samples/
+   ├─ PD120/
+   └─ PD180/
+```
 
 ---
 
@@ -94,17 +102,20 @@ Build the executable:
 
 ```bash
 swift build
-````
+```
 
 Run the decoder:
 
 ```bash
-# Basic usage (auto-detects mode, defaults to PD120)
-.build/release/sstv input.wav -o output.png
+# Basic usage (auto-detects mode via VIS code)
+swift run sstv input.wav
+
+# Custom output file
+swift run sstv input.wav output.png
 
 # Force a specific mode
-.build/release/sstv input.wav -o output.png --mode PD120
-.build/release/sstv input.wav -o output.png --mode PD180
+swift run sstv input.wav --mode PD120
+swift run sstv input.wav --mode PD180
 ```
 
 ---
@@ -143,16 +154,16 @@ Corrects **diagonal slanting** caused by sample rate mismatch between transmitte
 
 ```bash
 # Shift image 11ms to the right (good for many PD120 recordings)
-.build/release/sstv input.wav -o output.png -p 11
+swift run sstv input.wav -p 11
 
-# Correct skew of 0.02ms per line
-.build/release/sstv input.wav -o output.png -s 0.02
+# Correct skew of 0.015ms per line
+swift run sstv input.wav -s 0.015
 
 # Combined adjustment (recommended for PD120)
-.build/release/sstv input.wav -o output.png -p 11 -s 0.02
+swift run sstv input.wav -p 11 -s 0.015
 
 # Force PD180 mode with adjustments
-.build/release/sstv input.wav -o output.png --mode PD180 -p 5 -s 0.01
+swift run sstv input.wav --mode PD180 -p 5 -s 0.01
 ```
 
 ### Troubleshooting
@@ -183,7 +194,7 @@ Run tests:
 swift test
 ```
 
-Decoded images are compared against known-good reference output in `/Samples/expected`.
+Decoded images are compared against known-good reference output in `samples/` and `expected/` directories.
 
 ---
 
@@ -212,11 +223,11 @@ They exist to prevent subtle DSP breakage and architectural drift.
 
 ## 📡 Supported / Planned SSTV Modes
 
-* [x] Robot36 (planned)
-* [x] PD120 (planned)
-* [x] PD180 (planned)
+* [x] **PD120** - Implemented and tested
+* [x] **PD180** - Implemented and tested
+* [ ] Robot36
 * [ ] Additional Robot modes
-* [ ] Additional PD modes
+* [ ] Additional PD modes (PD50, PD160, PD240)
 
 Mode implementations live in `Sources/sstv/Modes/` and should read like specifications, not algorithms.
 
@@ -224,21 +235,27 @@ Mode implementations live in `Sources/sstv/Modes/` and should read like specific
 
 ## 🛣 Roadmap
 
+Completed:
+
+* ✅ WAV parsing (mono/stereo)
+* ✅ VIS code detection and auto-mode selection
+* ✅ PD120 decode with YCbCr color space
+* ✅ PD180 decode with YCbCr color space
+* ✅ PNG output
+* ✅ FM demodulation for accurate frequency tracking
+* ✅ Phase offset and skew correction
+
 Near-term:
 
-* WAV parsing and resampling
-* VIS decoding
-* Robot36 decode
-* PD120 decode
-* PD180 decode
-* PNG output
+* Robot36 mode support
+* Additional PD modes (PD50, PD160, PD240)
+* Improved sync tolerance
 
 Later:
 
-* Mode auto-detection
-* Improved sync tolerance
 * Shared decoder package for macOS UI
 * Optional live audio input
+* Real-time waterfall display
 
 ---
 
