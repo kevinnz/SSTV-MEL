@@ -13,8 +13,9 @@ protocol SSTVModeDecoder {
     ///   - frequencies: Frequency data for one transmission frame
     ///   - sampleRate: Audio sample rate
     ///   - frameIndex: Index of the frame being decoded
+    ///   - options: Decoding options for phase and skew adjustment
     /// - Returns: Array of pixel rows, where each row is RGB triplets (length = width * 3)
-    func decodeFrame(frequencies: [Double], sampleRate: Double, frameIndex: Int) -> [[Double]]
+    func decodeFrame(frequencies: [Double], sampleRate: Double, frameIndex: Int, options: DecodingOptions) -> [[Double]]
     
     var width: Int { get }
     var height: Int { get }
@@ -44,13 +45,19 @@ struct SSTVDecoder {
     ///
     /// - Parameters:
     ///   - audio: WAV audio file containing SSTV signal
-    ///   - debug: Enable debug output
+    ///   - options: Decoding options for phase and skew adjustment
     /// - Returns: Decoded image buffer
     /// - Throws: DecodingError if decoding fails
-    func decode(audio: WAVFile, debug: Bool = false) throws -> ImageBuffer {
+    func decode(audio: WAVFile, options: DecodingOptions = .default) throws -> ImageBuffer {
         print("Decoding SSTV signal...")
         print("  Sample rate: \(audio.sampleRate) Hz")
         print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
+        
+        // Print adjustment info if non-default
+        if options.phaseOffsetMs != 0.0 || options.skewMsPerLine != 0.0 {
+            print("  Phase offset: \(String(format: "%.2f", options.phaseOffsetMs)) ms")
+            print("  Skew: \(String(format: "%.4f", options.skewMsPerLine)) ms/line")
+        }
         
         // Extract mono signal
         let samples = audio.monoSamples
@@ -80,7 +87,7 @@ struct SSTVDecoder {
         
         print("  Resolution: \(mode.width)×\(mode.height)")
         
-        return try decodeWithMode(audio: audio, samples: samples, mode: mode, debug: debug)
+        return try decodeWithMode(audio: audio, samples: samples, mode: mode, options: options)
     }
     
     /// Decode SSTV audio with a forced mode
@@ -88,14 +95,20 @@ struct SSTVDecoder {
     /// - Parameters:
     ///   - audio: WAV audio file containing SSTV signal
     ///   - forcedMode: Mode name to force (e.g., "PD120", "PD180")
-    ///   - debug: Enable debug output
+    ///   - options: Decoding options for phase and skew adjustment
     /// - Returns: Decoded image buffer
     /// - Throws: DecodingError if decoding fails or mode is unknown
-    func decode(audio: WAVFile, forcedMode: String, debug: Bool = false) throws -> ImageBuffer {
+    func decode(audio: WAVFile, forcedMode: String, options: DecodingOptions = .default) throws -> ImageBuffer {
         print("Decoding SSTV signal...")
         print("  Sample rate: \(audio.sampleRate) Hz")
         print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
         print("  Forced Mode: \(forcedMode)")
+        
+        // Print adjustment info if non-default
+        if options.phaseOffsetMs != 0.0 || options.skewMsPerLine != 0.0 {
+            print("  Phase offset: \(String(format: "%.2f", options.phaseOffsetMs)) ms")
+            print("  Skew: \(String(format: "%.4f", options.skewMsPerLine)) ms/line")
+        }
         
         let mode: SSTVModeDecoder
         switch forcedMode.uppercased() {
@@ -113,7 +126,7 @@ struct SSTVDecoder {
         
         let samples = audio.monoSamples
         
-        return try decodeWithMode(audio: audio, samples: samples, mode: mode, debug: debug)
+        return try decodeWithMode(audio: audio, samples: samples, mode: mode, options: options)
     }
     
     /// Decode with a specific mode using FM demodulation
@@ -127,7 +140,7 @@ struct SSTVDecoder {
         audio: WAVFile,
         samples: [Double],
         mode: SSTVModeDecoder,
-        debug: Bool = false
+        options: DecodingOptions = .default
     ) throws -> ImageBuffer {
         print("Demodulating FM signal...")
         
@@ -181,7 +194,8 @@ struct SSTVDecoder {
             let rows = mode.decodeFrame(
                 frequencies: frameFrequencies,
                 sampleRate: audio.sampleRate,  // Now using actual sample rate!
-                frameIndex: frameIndex
+                frameIndex: frameIndex,
+                options: options
             )
             
             // Store each row in buffer
