@@ -1,7 +1,7 @@
 import Foundation
 
 /// Errors that can occur during WAV file reading
-enum WAVError: Error {
+public enum WAVError: Error {
     case fileNotFound
     case invalidFormat
     case unsupportedFormat(String)
@@ -9,27 +9,27 @@ enum WAVError: Error {
 }
 
 /// Represents a WAV audio file with its samples
-struct WAVFile {
+public struct WAVFile {
     /// Sample rate in Hz
-    let sampleRate: Double
+    public let sampleRate: Double
     
     /// Number of audio channels
-    let channels: Int
+    public let channels: Int
     
     /// Bits per sample
-    let bitsPerSample: Int
+    public let bitsPerSample: Int
     
     /// Audio samples (normalized to -1.0...1.0)
     /// For multi-channel audio, samples are interleaved
-    let samples: [Double]
+    public let samples: [Double]
     
     /// Duration in seconds
-    var duration: Double {
+    public var duration: Double {
         Double(samples.count) / Double(channels) / sampleRate
     }
     
     /// Extract mono channel (averages all channels if multi-channel)
-    var monoSamples: [Double] {
+    public var monoSamples: [Double] {
         guard channels > 1 else {
             return samples
         }
@@ -51,14 +51,14 @@ struct WAVFile {
 
 /// Simple WAV file reader
 /// Supports PCM format only (16-bit and 8-bit)
-struct WAVReader {
+public struct WAVReader {
     
     /// Read a WAV file from the given path
     ///
     /// - Parameter path: Path to WAV file
     /// - Returns: WAVFile structure containing audio data
     /// - Throws: WAVError if file cannot be read or has unsupported format
-    static func read(path: String) throws -> WAVFile {
+    public static func read(path: String) throws -> WAVFile {
         let url = URL(fileURLWithPath: path)
         
         guard FileManager.default.fileExists(atPath: path) else {

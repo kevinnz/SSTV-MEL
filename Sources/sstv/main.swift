@@ -1,4 +1,5 @@
 import Foundation
+import SSTVCore
 
 /// Command-line SSTV decoder
 func main() {
@@ -138,15 +139,38 @@ func main() {
         print("Reading audio file...")
         let audio = try WAVReader.read(path: inputPath)
         
+        print("Decoding SSTV signal...")
+        print("  Sample rate: \(audio.sampleRate) Hz")
+        print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
+        
         // Decode with auto mode detection or forced mode
         let decoder = SSTVDecoder()
         let buffer: ImageBuffer
         
+        var lastProgressUpdate = Date()
+        let progressUpdateInterval: TimeInterval = 1.0  // Update every second
+        
         if let modeStr = forcedMode {
-            buffer = try decoder.decode(audio: audio, forcedMode: modeStr, options: options)
+            buffer = try decoder.decode(audio: audio, forcedMode: modeStr, options: options) { progress in
+                let now = Date()
+                if now.timeIntervalSince(lastProgressUpdate) >= progressUpdateInterval ||
+                   progress.overallProgress >= 0.99 {
+                    lastProgressUpdate = now
+                    printProgress(progress)
+                }
+            }
         } else {
-            buffer = try decoder.decode(audio: audio, options: options)
+            buffer = try decoder.decode(audio: audio, options: options) { progress in
+                let now = Date()
+                if now.timeIntervalSince(lastProgressUpdate) >= progressUpdateInterval ||
+                   progress.overallProgress >= 0.99 {
+                    lastProgressUpdate = now
+                    printProgress(progress)
+                }
+            }
         }
+        
+        print("")  // New line after progress updates
         
         // Write image file
         let formatName = switch outputFormat {
@@ -176,6 +200,54 @@ func main() {
         print("ERROR: Unexpected error")
         print("  \(error)")
         exit(1)
+    }
+}
+
+/// Print progress update
+func printProgress(_ progress: DecodingProgress) {
+    let progressBar = makeProgressBar(progress: progress.overallProgress, width: 30)
+    let percent = Int(progress.overallProgress * 100)
+    
+    var status = "\r  \(progressBar) \(percent)%"
+    
+    // Add phase-specific info
+    switch progress.phase {
+    case .visDetection:
+        status += " | Detecting VIS code..."
+    case .fmDemodulation:
+        status += " | Demodulating FM signal..."
+    case .signalSearch:
+        status += " | Searching for signal start..."
+    case .frameDecoding(let lines, let total):
+        status += " | Decoding: \(lines)/\(total) lines"
+        if let eta = progress.estimatedSecondsRemaining {
+            status += " | ETA: \(formatTime(eta))"
+        }
+    case .writing:
+        status += " | Writing output..."
+    }
+    
+    print(status, terminator: "")
+    fflush(stdout)
+}
+
+/// Create a progress bar string
+func makeProgressBar(progress: Double, width: Int) -> String {
+    let filled = Int(progress * Double(width))
+    let empty = width - filled
+    return "[" + String(repeating: "█", count: filled) + String(repeating: "░", count: empty) + "]"
+}
+
+/// Format time interval in human-readable format
+func formatTime(_ seconds: TimeInterval) -> String {
+    let totalSeconds = Int(seconds)
+    let minutes = totalSeconds / 60
+    let secs = totalSeconds % 60
+    
+    if minutes > 0 {
+        return "\(minutes)m \(secs)s"
+    } else {
+        return "\(secs)s"
     }
 }
 

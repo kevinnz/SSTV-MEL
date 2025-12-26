@@ -1,10 +1,10 @@
-# SSTV — Swift Command-Line Decoder
+# SSTV — Swift Command-Line Decoder & Library
 
 **By Kevin Alcock (ZL3XA)**
 
-A **command-line SSTV decoder written in Swift**, designed to convert recorded SSTV audio (WAV) into decoded images (PNG).
+A **Swift SSTV decoder** providing both a command-line tool and a reusable library (`SSTVCore`) for decoding SSTV audio (WAV) into images (PNG/JPEG).
 
-This project is intentionally **CLI-first**, **UI-agnostic**, and **test-driven**, with the long-term goal of reuse inside a native macOS application.
+This project is **library-first**, with a CLI built on top, designed for easy integration into macOS, iOS, and iPadOS applications.
 
 ---
 
@@ -28,7 +28,11 @@ Non-goals (for now):
 
 ## 🧱 Architecture Overview
 
-The project is structured as a **single Swift Package Manager executable**, with strong internal boundaries:
+The project consists of two targets:
+- **SSTVCore**: Reusable Swift library for SSTV decoding
+- **sstv**: Command-line executable built on SSTVCore
+
+The library is structured with clear internal boundaries:
 
 ```
 Audio (WAV parsing)
@@ -58,42 +62,156 @@ This layout is deliberate so the core decoder can later be reused by a macOS app
 sstv/
 ├─ Package.swift
 ├─ README.md
+├─ LICENSE
 │
 ├─ Sources/
-│  └─ sstv/
-│     ├─ main.swift
-│     ├─ Audio/
-│     │  └─ WAVReader.swift
-│     ├─ DSP/
-│     │  ├─ FMDemodulator.swift
-│     │  └─ Goertzel.swift
-│     ├─ SSTV/
-│     │  ├─ DecodingOptions.swift
-│     │  ├─ SSTVDecoder.swift
-│     │  ├─ SSTVMode.swift
-│     │  └─ VISDetector.swift
-│     ├─ Modes/
-│     │  ├─ PD120Mode.swift
-│     │  └─ PD180Mode.swift
-│     ├─ Image/
-│     │  ├─ ImageBuffer.swift
-│     │  └─ ImageWriter.swift
-│     └─ Util/
-│        └─ ImageComparison.swift
+│  ├─ SSTVCore/              # Library target (reusable)
+│  │  ├─ Audio/
+│  │  │  └─ WAVReader.swift
+│  │  ├─ DSP/
+│  │  │  ├─ FMDemodulator.swift
+│  │  │  └─ Goertzel.swift
+│  │  ├─ SSTV/
+│  │  │  ├─ DecodingOptions.swift
+│  │  │  ├─ SSTVDecoder.swift
+│  │  │  ├─ SSTVMode.swift
+│  │  │  └─ VISDetector.swift
+│  │  ├─ Modes/
+│  │  │  ├─ PD120Mode.swift
+│  │  │  └─ PD180Mode.swift
+│  │  ├─ Image/
+│  │  │  ├─ ImageBuffer.swift
+│  │  │  └─ ImageWriter.swift
+│  │  └─ Util/
+│  │     └─ ImageComparison.swift
+│  │
+│  └─ sstv/                   # CLI executable target
+│     └─ main.swift
 │
 ├─ Tests/
 │  └─ sstvTests/
 │     ├─ GoldenFileTests.swift
 │     └─ PD120ModeTests.swift
 │
-└─ samples/
-   ├─ PD120/
-   └─ PD180/
+├─ audio/
+│  └─ test2.wav
+│
+├─ samples/
+│  ├─ PD120/
+│  └─ PD180/
+│
+└─ docs/
+   ├─ NEXT-STEPS.md
+   ├─ PD120-Implementation.md
+   ├─ REFACTOR-TO-LIBRARY.md
+   └─ adr/
 ```
 
 ---
 
-## 🚀 Building
+## � Using as a Library
+
+SSTVCore can be integrated into your Swift projects:
+
+### Adding as a Dependency
+
+Add to your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/kevinnz/SSTV-MEL.git", from: "1.0.0")
+],
+targets: [
+    .target(
+        name: "YourTarget",
+        dependencies: ["SSTVCore"])
+]
+```
+
+### Basic Usage
+
+#### Decode and Save to File
+
+```swift
+import SSTVCore
+
+// Read audio file
+let audio = try WAVReader.read(path: "signal.wav")
+
+// Decode with options
+let options = DecodingOptions(
+    phaseOffsetMs: 11.0,
+    skewMsPerLine: 0.015
+)
+let decoder = SSTVDecoder()
+let buffer = try decoder.decode(audio: audio, options: options)
+
+// Save as PNG or JPEG
+try ImageWriter.write(buffer: buffer, to: "output.png")
+try ImageWriter.write(buffer: buffer, to: "output.jpg", format: .jpeg(quality: 0.95))
+```
+
+#### Encode to Data (for UI Integration)
+
+```swift
+import SSTVCore
+
+// Decode as above...
+let buffer = try decoder.decode(audio: audio, options: options)
+
+// Encode to PNG data
+let pngData = try ImageWriter.encode(buffer: buffer, format: .png)
+
+// Encode to JPEG data with custom quality
+let jpegData = try ImageWriter.encode(buffer: buffer, format: .jpeg(quality: 0.9))
+
+// Use data with macOS/iOS UI
+#if os(macOS)
+imageView.image = NSImage(data: pngData)
+#elseif os(iOS)
+imageView.image = UIImage(data: pngData)
+#endif
+```
+
+#### Progress Callbacks (for UI Progress Indicators)
+
+```swift
+import SSTVCore
+
+let decoder = SSTVDecoder()
+let buffer = try decoder.decode(audio: audio, options: options) { progress in
+    // Progress callback is called on the same thread as decode()
+    // Dispatch to main thread for UI updates
+    DispatchQueue.main.async {
+        // Update progress bar (0.0...1.0)
+        progressBar.doubleValue = progress.overallProgress
+        
+        // Update status label
+        statusLabel.stringValue = progress.phase.description
+        
+        // Show time remaining
+        if let remaining = progress.estimatedSecondsRemaining {
+            timeLabel.stringValue = "Time remaining: \(Int(remaining))s"
+        }
+    }
+}
+```
+
+Progress phases include:
+- **VIS Detection**: Detecting the mode identifier code
+- **FM Demodulation**: Converting audio to frequency data
+- **Signal Search**: Finding the start of the image data
+- **Frame Decoding**: Decoding image lines (reports lines completed)
+- **Writing**: Saving output file (CLI only)
+
+### Platform Support
+
+- **macOS**: 13.0+
+- **iOS/iPadOS**: 16.0+
+
+---
+
+## �🚀 Building
 
 Requirements:
 - macOS 13+
