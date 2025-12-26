@@ -84,10 +84,7 @@ public struct DecodingOptions {
         }
     }
     
-    // MARK: - Debug Options
-    
-    /// Enable debug output during decoding
-    public var debug: Bool
+
     
     // MARK: - Clamping Helpers
     
@@ -112,15 +109,12 @@ public struct DecodingOptions {
     /// - Parameters:
     ///   - phaseOffsetMs: Horizontal phase offset in milliseconds (default: 0.0)
     ///   - skewMsPerLine: Skew correction in milliseconds per line (default: 0.0)
-    ///   - debug: Enable debug output (default: false)
     public init(
         phaseOffsetMs: Double = 0.0,
-        skewMsPerLine: Double = 0.0,
-        debug: Bool = false
+        skewMsPerLine: Double = 0.0
     ) {
-        self.phaseOffsetMs = Self.clampPhase(phaseOffsetMs)
-        self.skewMsPerLine = Self.clampSkew(skewMsPerLine)
-        self.debug = debug
+        self.phaseOffsetMs = phaseOffsetMs
+        self.skewMsPerLine = skewMsPerLine
     }
     
     /// Default options with no adjustments
