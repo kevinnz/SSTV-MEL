@@ -173,6 +173,37 @@ imageView.image = UIImage(data: pngData)
 #endif
 ```
 
+#### Progress Callbacks (for UI Progress Indicators)
+
+```swift
+import SSTVCore
+
+let decoder = SSTVDecoder()
+let buffer = try decoder.decode(audio: audio, options: options) { progress in
+    // Progress callback is called on the same thread as decode()
+    // Dispatch to main thread for UI updates
+    DispatchQueue.main.async {
+        // Update progress bar (0.0...1.0)
+        progressBar.doubleValue = progress.overallProgress
+        
+        // Update status label
+        statusLabel.stringValue = progress.phase.description
+        
+        // Show time remaining
+        if let remaining = progress.estimatedSecondsRemaining {
+            timeLabel.stringValue = "Time remaining: \(Int(remaining))s"
+        }
+    }
+}
+```
+
+Progress phases include:
+- **VIS Detection**: Detecting the mode identifier code
+- **FM Demodulation**: Converting audio to frequency data
+- **Signal Search**: Finding the start of the image data
+- **Frame Decoding**: Decoding image lines (reports lines completed)
+- **Writing**: Saving output file (CLI only)
+
 ### Platform Support
 
 - **macOS**: 13.0+
