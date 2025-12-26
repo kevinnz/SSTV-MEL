@@ -109,20 +109,39 @@ extension PD180Mode {
     /// - Phase continuity is maintained across all components and lines
     /// - Sync/porch regions are explicitly excluded from pixel sampling
     ///
+    /// PHASE AND SKEW ADJUSTMENT:
+    /// - Phase offset shifts all sampling positions by a fixed amount (horizontal shift)
+    /// - Skew adjustment adds a per-line offset to correct for timing drift (diagonal slant)
+    /// - Combined offset for line N: phaseOffsetMs + (N * skewMsPerLine)
+    ///
     /// - Parameters:
     ///   - frequencies: Array of detected frequencies in Hz, time-aligned to frame start
     ///   - sampleRate: Audio sample rate in Hz
     ///   - frameIndex: Index of the frame being decoded (0-based)
+    ///   - options: Decoding options for phase and skew adjustment
     ///
     /// - Returns: Array of 2 pixel rows, each containing RGB triplets (width * 3)
     func decodeFrame(
         frequencies: [Double],
         sampleRate: Double,
-        frameIndex: Int
+        frameIndex: Int,
+        options: DecodingOptions = .default
     ) -> [[Double]] {
         // Calculate the EXACT time (in seconds) when each component starts
         // These are derived from PD180's published spec timings
         let samplesPerSecond = sampleRate
+        
+        // Calculate phase/skew offset for each line in this frame
+        // Frame contains 2 lines: even line (frameIndex * 2) and odd line (frameIndex * 2 + 1)
+        let line0Index = frameIndex * linesPerFrame
+        let line1Index = line0Index + 1
+        
+        // Get sample offsets for each line (phase + accumulated skew)
+        let line0SampleOffset = options.sampleOffset(forLine: line0Index, sampleRate: sampleRate)
+        let line1SampleOffset = options.sampleOffset(forLine: line1Index, sampleRate: sampleRate)
+        
+        // For shared chrominance (Cb, Cr), use average of the two line offsets
+        let chromaSampleOffset = (line0SampleOffset + line1SampleOffset) / 2.0
         
         // Component start times in milliseconds (from frame start)
         let syncEndTimeMs = syncPulseMs
@@ -138,13 +157,19 @@ extension PD180Mode {
         // Convert milliseconds to fractional sample indices
         // NOTE: These are CONTINUOUS fractional indices - no rounding!
         let msToSamples = samplesPerSecond / 1000.0
-        let y0StartSample = y0StartTimeMs * msToSamples
-        let y0EndSample = y0EndTimeMs * msToSamples
-        let crStartSample = crStartTimeMs * msToSamples
-        let crEndSample = crEndTimeMs * msToSamples
-        let cbStartSample = cbStartTimeMs * msToSamples
-        let cbEndSample = cbEndTimeMs * msToSamples
-        let y1StartSample = y1StartTimeMs * msToSamples
+        
+        // Apply per-line phase/skew offset to Y components
+        let y0StartSample = y0StartTimeMs * msToSamples + line0SampleOffset
+        let y0EndSample = y0EndTimeMs * msToSamples + line0SampleOffset
+        
+        // Apply averaged offset to shared chrominance components
+        let crStartSample = crStartTimeMs * msToSamples + chromaSampleOffset
+        let crEndSample = crEndTimeMs * msToSamples + chromaSampleOffset
+        let cbStartSample = cbStartTimeMs * msToSamples + chromaSampleOffset
+        let cbEndSample = cbEndTimeMs * msToSamples + chromaSampleOffset
+        
+        // Apply line 1's offset to Y1
+        let y1StartSample = y1StartTimeMs * msToSamples + line1SampleOffset
         let y1EndSample = y1StartSample + (yDurationMs * msToSamples)
         
         // Decode all components using time-based continuous indexing

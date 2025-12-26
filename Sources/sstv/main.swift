@@ -14,6 +14,8 @@ func main() {
     var outputPath = "output.png"
     var forcedMode: String? = nil
     var debugMode = false
+    var phaseOffsetMs: Double = 0.0
+    var skewMsPerLine: Double = 0.0
     
     // Parse optional arguments
     var i = 2
@@ -25,6 +27,22 @@ func main() {
                 i += 2
             } else {
                 print("Error: --mode requires a value")
+                exit(1)
+            }
+        } else if arg == "--phase" || arg == "-p" {
+            if i + 1 < arguments.count, let value = Double(arguments[i + 1]) {
+                phaseOffsetMs = value
+                i += 2
+            } else {
+                print("Error: --phase requires a numeric value (milliseconds)")
+                exit(1)
+            }
+        } else if arg == "--skew" || arg == "-s" {
+            if i + 1 < arguments.count, let value = Double(arguments[i + 1]) {
+                skewMsPerLine = value
+                i += 2
+            } else {
+                print("Error: --skew requires a numeric value (milliseconds per line)")
                 exit(1)
             }
         } else if arg == "--debug" || arg == "-d" {
@@ -43,10 +61,23 @@ func main() {
     if let mode = forcedMode {
         print("Mode:   \(mode) (forced)")
     }
+    if phaseOffsetMs != 0.0 {
+        print("Phase:  \(String(format: "%.2f", phaseOffsetMs)) ms")
+    }
+    if skewMsPerLine != 0.0 {
+        print("Skew:   \(String(format: "%.4f", skewMsPerLine)) ms/line")
+    }
     if debugMode {
         print("Debug:  enabled")
     }
     print("")
+    
+    // Create decoding options
+    let options = DecodingOptions(
+        phaseOffsetMs: phaseOffsetMs,
+        skewMsPerLine: skewMsPerLine,
+        debug: debugMode
+    )
     
     do {
         // Read WAV file
@@ -58,9 +89,9 @@ func main() {
         let buffer: ImageBuffer
         
         if let modeStr = forcedMode {
-            buffer = try decoder.decode(audio: audio, forcedMode: modeStr, debug: debugMode)
+            buffer = try decoder.decode(audio: audio, forcedMode: modeStr, options: options)
         } else {
-            buffer = try decoder.decode(audio: audio, debug: debugMode)
+            buffer = try decoder.decode(audio: audio, options: options)
         }
         
         // Write PNG
@@ -91,7 +122,7 @@ func main() {
 }
 
 func printUsage() {
-    print("Usage: sstv <input.wav> [output.png] [--mode MODE]")
+    print("Usage: sstv <input.wav> [output.png] [options]")
     print("")
     print("Decode SSTV audio into a PNG image")
     print("")
@@ -99,16 +130,29 @@ func printUsage() {
     print("  input.wav   - Input WAV file containing SSTV signal")
     print("  output.png  - Output PNG file (default: output.png)")
     print("")
-    print("  --debug, -d - Enable debug output (frequency analysis)")
     print("Options:")
-    print("  --mode, -m  - Force SSTV mode (PD120, PD180)")
-    print("                If not specified, mode is auto-detected via VIS code")
+    print("  --mode, -m <MODE>     Force SSTV mode (PD120, PD180)")
+    print("                        If not specified, mode is auto-detected via VIS code")
+    print("")
+    print("  --phase, -p <MS>      Horizontal phase offset in milliseconds")
+    print("                        Positive values shift image right, negative shift left")
+    print("                        Use to correct horizontal alignment issues")
+    print("                        Typical range: -5.0 to +5.0")
+    print("")
+    print("  --skew, -s <MS/LINE>  Skew correction in milliseconds per line")
+    print("                        Corrects diagonal slanting caused by timing drift")
+    print("                        Positive values correct clockwise slant")
+    print("                        Typical range: -0.5 to +0.5")
+    print("")
+    print("  --debug, -d           Enable debug output (frequency analysis)")
     print("")
     print("Examples:")
     print("  sstv input.wav                         # Auto-detect mode")
     print("  sstv input.wav output.png              # Auto-detect mode, custom output")
     print("  sstv input.wav --mode PD180            # Force PD180 mode")
-    print("  sstv input.wav output.png -m PD120     # Force PD120 mode")
+    print("  sstv input.wav -p 1.5                  # Shift image 1.5ms right")
+    print("  sstv input.wav -s 0.02                 # Correct 0.02ms/line skew")
+    print("  sstv input.wav -p 1.0 -s -0.01         # Combined phase and skew")
 }
 
 // Run main
