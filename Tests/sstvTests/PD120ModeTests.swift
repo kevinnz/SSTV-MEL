@@ -1,5 +1,5 @@
 import XCTest
-@testable import sstv
+@testable import SSTVCore
 
 /// Tests for PD120 mode implementation
 final class PD120ModeTests: XCTestCase {

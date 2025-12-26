@@ -6,12 +6,12 @@ import ImageIO
 #endif
 
 /// Image output format
-enum ImageFormat {
+public enum ImageFormat {
     case png
     case jpeg(quality: Double)  // quality: 0.0 (worst) to 1.0 (best)
     
     /// Get the file extension for this format
-    var fileExtension: String {
+    public var fileExtension: String {
         switch self {
         case .png:
             return "png"
@@ -21,7 +21,7 @@ enum ImageFormat {
     }
     
     /// Get the UTI (Uniform Type Identifier) for this format
-    var uti: String {
+    public var uti: String {
         switch self {
         case .png:
             return "public.png"
@@ -31,7 +31,7 @@ enum ImageFormat {
     }
     
     /// Detect format from file path extension
-    static func from(path: String) -> ImageFormat {
+    public static func from(path: String) -> ImageFormat {
         let ext = (path as NSString).pathExtension.lowercased()
         switch ext {
         case "jpg", "jpeg":
@@ -43,7 +43,7 @@ enum ImageFormat {
 }
 
 /// Errors that can occur during image writing
-enum ImageWriteError: Error {
+public enum ImageWriteError: Error {
     case writeError(String)
     case invalidDimensions
     case unsupportedPlatform
@@ -52,7 +52,7 @@ enum ImageWriteError: Error {
 /// Image writer for SSTV decoded images
 ///
 /// Supports both PNG and JPEG output formats
-struct ImageWriter {
+public struct ImageWriter {
     
     /// Write an ImageBuffer to a file
     ///
@@ -61,7 +61,7 @@ struct ImageWriter {
     ///   - path: Output file path
     ///   - format: Image format (PNG or JPEG). If nil, detected from file extension
     /// - Throws: ImageWriteError if writing fails
-    static func write(buffer: ImageBuffer, to path: String, format: ImageFormat? = nil) throws {
+    public static func write(buffer: ImageBuffer, to path: String, format: ImageFormat? = nil) throws {
         guard buffer.width > 0 && buffer.height > 0 else {
             throw ImageWriteError.invalidDimensions
         }
