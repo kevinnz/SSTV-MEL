@@ -109,7 +109,7 @@ struct FMDemodulator {
         var iComponent = [Double](repeating: 0.0, count: n)
         var qComponent = [Double](repeating: 0.0, count: n)
         
-        let omega = 2.0 * Double.pi * centerFrequency / sampleRate
+        var omega = 2.0 * Double.pi * centerFrequency / sampleRate
         
         #if canImport(Accelerate)
         // Use Accelerate framework for efficient vectorized operations on Apple platforms
