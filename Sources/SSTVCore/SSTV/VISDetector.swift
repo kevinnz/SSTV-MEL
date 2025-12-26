@@ -75,7 +75,6 @@ struct VISDetector {
         var consecutiveLeader = 0
         let requiredLeaderSteps = leaderSamples / stepSize
         
-        print("  Looking for leader tone (1900 Hz)...")
         var attemptCount = 0
         
         for (index, freq) in searchFreqs.enumerated() {

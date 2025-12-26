@@ -286,12 +286,6 @@ struct FMFrequencyTracker {
     ///   - progressHandler: Optional callback for progress updates (0.0...1.0)
     /// - Returns: Array of detected frequencies, one per sample
     func track(samples: [Double], progressHandler: ((Double) -> Void)? = nil) -> [Double] {
-        print("  Using quadrature FM demodulation (ADR-001 compliant)...")
-        print("  Center frequency: \(demodulator.centerFrequency) Hz")
-        print("  Filter cutoff: \(demodulator.filterCutoff) Hz")
-        
-        let startTime = Date()
-        
         // Report initial progress
         progressHandler?(0.0)
         
