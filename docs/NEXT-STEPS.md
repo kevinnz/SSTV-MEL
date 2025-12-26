@@ -12,7 +12,7 @@ This document tracks the identified improvements and fixes for the SSTV decoder.
 
 ### 2. Investigate ~68-pixel horizontal timing offset
 - **Status:** Not started
-- **Priority:** Medium
+- **Priority:** High
 - **Description:** There's approximately 13ms timing error causing horizontal misalignment with reference images
 - **Possible causes:**
   - Sync detection finding middle of sync pulse instead of start
@@ -26,7 +26,7 @@ This document tracks the identified improvements and fixes for the SSTV decoder.
 
 ### 4. Re-generate reference images
 - **Status:** Not started
-- **Priority:** Low
+- **Priority:** Medium
 - **Description:** Consider re-generating expected reference images using this decoder for accurate comparison testing
 
 ## Branch Merges
@@ -37,7 +37,7 @@ This document tracks the identified improvements and fixes for the SSTV decoder.
 
 ### 6. Merge PD180 fixes from `fix/pd180-decode-quality` branch
 - **Status:** Not started
-- **Priority:** High
+- **Priority:** Medium
 - **Description:** Previous session achieved 0.969 correlation and 0-pixel horizontal shift on PD180. Changes include:
   - Quadrature FM demodulation (ADR-001 compliant)
   - FIR low-pass filtering
