@@ -13,7 +13,6 @@ func main() {
     let inputPath = arguments[1]
     var outputPath = "output.png"
     var forcedMode: String? = nil
-    var debugMode = false
     var phaseOffsetMs: Double = 0.0
     var skewMsPerLine: Double = 0.0
     
@@ -45,9 +44,6 @@ func main() {
                 print("Error: --skew requires a numeric value (milliseconds per line)")
                 exit(1)
             }
-        } else if arg == "--debug" || arg == "-d" {
-            debugMode = true
-            i += 1
         } else {
             outputPath = arg
             i += 1
@@ -65,8 +61,7 @@ func main() {
     // Create decoding options (values will be clamped automatically)
     let options = DecodingOptions(
         phaseOffsetMs: phaseOffsetMs,
-        skewMsPerLine: skewMsPerLine,
-        debug: debugMode
+        skewMsPerLine: skewMsPerLine
     )
     
     // Show phase/skew values and warn if clamped
@@ -83,9 +78,6 @@ func main() {
         } else {
             print("Skew:   \(String(format: "%.4f", skewMsPerLine)) ms/line")
         }
-    }
-    if debugMode {
-        print("Debug:  enabled")
     }
     print("")
     
@@ -153,8 +145,6 @@ func printUsage() {
     print("                        Corrects diagonal slanting caused by timing drift")
     print("                        Positive values correct clockwise slant")
     print("                        Typical range: -0.5 to +0.5, max: ±1.0")
-    print("")
-    print("  --debug, -d           Enable debug output (frequency analysis)")
     print("")
     print("Examples:")
     print("  sstv input.wav                         # Auto-detect mode")
