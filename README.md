@@ -1,10 +1,10 @@
-# SSTV — Swift Command-Line Decoder
+# SSTV — Swift Command-Line Decoder & Library
 
 **By Kevin Alcock (ZL3XA)**
 
-A **command-line SSTV decoder written in Swift**, designed to convert recorded SSTV audio (WAV) into decoded images (PNG).
+A **Swift SSTV decoder** providing both a command-line tool and a reusable library (`SSTVCore`) for decoding SSTV audio (WAV) into images (PNG/JPEG).
 
-This project is intentionally **CLI-first**, **UI-agnostic**, and **test-driven**, with the long-term goal of reuse inside a native macOS application.
+This project is **library-first**, with a CLI built on top, designed for easy integration into macOS, iOS, and iPadOS applications.
 
 ---
 
@@ -28,7 +28,11 @@ Non-goals (for now):
 
 ## 🧱 Architecture Overview
 
-The project is structured as a **single Swift Package Manager executable**, with strong internal boundaries:
+The project consists of two targets:
+- **SSTVCore**: Reusable Swift library for SSTV decoding
+- **sstv**: Command-line executable built on SSTVCore
+
+The library is structured with clear internal boundaries:
 
 ```
 Audio (WAV parsing)
@@ -93,7 +97,54 @@ sstv/
 
 ---
 
-## 🚀 Building
+## � Using as a Library
+
+SSTVCore can be integrated into your Swift projects:
+
+### Adding as a Dependency
+
+Add to your `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/kevinnz/SSTV-MEL.git", from: "1.0.0")
+],
+targets: [
+    .target(
+        name: "YourTarget",
+        dependencies: ["SSTVCore"])
+]
+```
+
+### Basic Usage
+
+```swift
+import SSTVCore
+
+// Read audio file
+let audio = try WAVReader.read(path: "signal.wav")
+
+// Decode with options
+let options = DecodingOptions(
+    phaseOffsetMs: 11.0,
+    skewMsPerLine: 0.015
+)
+let decoder = SSTVDecoder()
+let buffer = try decoder.decode(audio: audio, options: options)
+
+// Save as PNG or JPEG
+try ImageWriter.write(buffer: buffer, to: "output.png")
+try ImageWriter.write(buffer: buffer, to: "output.jpg", format: .jpeg(quality: 0.95))
+```
+
+### Platform Support
+
+- **macOS**: 13.0+
+- **iOS/iPadOS**: 16.0+
+
+---
+
+## �🚀 Building
 
 Requirements:
 - macOS 13+
