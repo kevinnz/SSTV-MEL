@@ -1,12 +1,12 @@
 import Foundation
 
 /// Decoding errors
-enum DecodingError: Error {
+public enum DecodingError: Error {
     case unknownMode(String)
 }
 
 /// Protocol for mode-agnostic SSTV decoding
-protocol SSTVModeDecoder {
+public protocol SSTVModeDecoder {
     /// Decode a frame of frequency data into pixel rows
     /// For modes that transmit 2 lines per frame (like PD modes), this returns 2 rows
     /// - Parameters:
@@ -39,49 +39,65 @@ extension PD180Mode: SSTVModeDecoder {}
 /// - Mode detection
 /// - Line-by-line decoding
 /// - Image output
-struct SSTVDecoder {
+public struct SSTVDecoder {
+    
+    public init() {}
     
     /// Decode SSTV audio into an image with auto mode detection
     ///
     /// - Parameters:
     ///   - audio: WAV audio file containing SSTV signal
     ///   - options: Decoding options for phase and skew adjustment
+    ///   - progressHandler: Optional callback for progress updates
     /// - Returns: Decoded image buffer
     /// - Throws: DecodingError if decoding fails
-    func decode(audio: WAVFile, options: DecodingOptions = .default) throws -> ImageBuffer {
-        print("Decoding SSTV signal...")
-        print("  Sample rate: \(audio.sampleRate) Hz")
-        print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
+    public func decode(
+        audio: WAVFile,
+        options: DecodingOptions = .default,
+        progressHandler: ProgressHandler? = nil
+    ) throws -> ImageBuffer {
+        let startTime = Date()
         
         // Extract mono signal
         let samples = audio.monoSamples
         
         // Detect VIS code to determine mode
-        print("Detecting VIS code...")
         let visDetector = VISDetector()
         
         let mode: SSTVModeDecoder
-        if let visResult = visDetector.detect(samples: samples, sampleRate: audio.sampleRate) {
-            print("  VIS Code: 0x\(String(visResult.code, radix: 16))")
-            print("  Detected Mode: \(visResult.mode)")
-            
+        if let visResult = visDetector.detect(
+            samples: samples,
+            sampleRate: audio.sampleRate,
+            progressHandler: { visProgress in
+                let elapsed = Date().timeIntervalSince(startTime)
+                let progress = DecodingProgress(
+                    phase: .visDetection(progress: visProgress),
+                    overallProgress: visProgress * 0.1,  // VIS is ~10% of total
+                    elapsedSeconds: elapsed
+                )
+                progressHandler?(progress)
+            }
+        ) {
             switch visResult.code {
             case 0x60:  // 96 decimal
                 mode = PD180Mode()
             case 0x5F:  // 95 decimal
                 mode = PD120Mode()
             default:
-                print("  Warning: Unsupported mode, defaulting to PD120")
                 mode = PD120Mode()
             }
         } else {
-            print("  VIS code not detected, defaulting to PD120")
             mode = PD120Mode()
         }
         
-        print("  Resolution: \(mode.width)×\(mode.height)")
-        
-        return try decodeWithMode(audio: audio, samples: samples, mode: mode, options: options)
+        return try decodeWithMode(
+            audio: audio,
+            samples: samples,
+            mode: mode,
+            options: options,
+            startTime: startTime,
+            progressHandler: progressHandler
+        )
     }
     
     /// Decode SSTV audio with a forced mode
@@ -90,13 +106,16 @@ struct SSTVDecoder {
     ///   - audio: WAV audio file containing SSTV signal
     ///   - forcedMode: Mode name to force (e.g., "PD120", "PD180")
     ///   - options: Decoding options for phase and skew adjustment
+    ///   - progressHandler: Optional callback for progress updates
     /// - Returns: Decoded image buffer
     /// - Throws: DecodingError if decoding fails or mode is unknown
-    func decode(audio: WAVFile, forcedMode: String, options: DecodingOptions = .default) throws -> ImageBuffer {
-        print("Decoding SSTV signal...")
-        print("  Sample rate: \(audio.sampleRate) Hz")
-        print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
-        print("  Forced Mode: \(forcedMode)")
+    public func decode(
+        audio: WAVFile,
+        forcedMode: String,
+        options: DecodingOptions = .default,
+        progressHandler: ProgressHandler? = nil
+    ) throws -> ImageBuffer {
+        let startTime = Date()
         
         let mode: SSTVModeDecoder
         switch forcedMode.uppercased() {
@@ -105,16 +124,19 @@ struct SSTVDecoder {
         case "PD180":
             mode = PD180Mode()
         default:
-            print("  Error: Unknown mode '\(forcedMode)'")
-            print("  Supported modes: PD120, PD180")
             throw DecodingError.unknownMode(forcedMode)
         }
         
-        print("  Resolution: \(mode.width)×\(mode.height)")
-        
         let samples = audio.monoSamples
         
-        return try decodeWithMode(audio: audio, samples: samples, mode: mode, options: options)
+        return try decodeWithMode(
+            audio: audio,
+            samples: samples,
+            mode: mode,
+            options: options,
+            startTime: startTime,
+            progressHandler: progressHandler
+        )
     }
     
     /// Decode with a specific mode using FM demodulation
@@ -128,28 +150,42 @@ struct SSTVDecoder {
         audio: WAVFile,
         samples: [Double],
         mode: SSTVModeDecoder,
-        options: DecodingOptions = .default
+        options: DecodingOptions = .default,
+        startTime: Date,
+        progressHandler: ProgressHandler?
     ) throws -> ImageBuffer {
-        print("Demodulating FM signal...")
-        
         // Use FM demodulation for accurate frequency tracking
         let fmTracker = FMFrequencyTracker(sampleRate: audio.sampleRate)
-        let frequencies = fmTracker.track(samples: samples)
+        let frequencies = fmTracker.track(samples: samples) { fmProgress in
+            let elapsed = Date().timeIntervalSince(startTime)
+            let progress = DecodingProgress(
+                phase: .fmDemodulation(progress: fmProgress),
+                overallProgress: 0.1 + (fmProgress * 0.2),  // FM demod is ~20%, starts after VIS (10%)
+                elapsedSeconds: elapsed
+            )
+            progressHandler?(progress)
+        }
         
         // Calculate samples per frame (each frame contains linesPerFrame image lines)
         let samplesPerFrame = Int(mode.frameDurationMs * audio.sampleRate / 1000.0)
         
-        print("  Samples per frame: \(samplesPerFrame)")
-        print("  Lines per frame: \(mode.linesPerFrame)")
-        
         // Find start of SSTV signal (look for sync tone patterns)
-        print("Searching for SSTV signal start...")
+        
+        // Report progress for signal search
+        let elapsed = Date().timeIntervalSince(startTime)
+        let searchProgress = DecodingProgress(
+            phase: .signalSearch,
+            overallProgress: 0.3,  // 30% after VIS and FM demod
+            elapsedSeconds: elapsed,
+            modeName: mode.name
+        )
+        progressHandler?(searchProgress)
+        
         let startSample = findSignalStartFM(
             frequencies: frequencies,
             mode: mode,
             sampleRate: audio.sampleRate
         )
-        print("  Signal starts at sample \(startSample)")
         
         // Create image buffer
         var buffer = ImageBuffer(width: mode.width, height: mode.height)
@@ -159,10 +195,8 @@ struct SSTVDecoder {
         let maxFrames = min(numFrames, (frequencies.count - startSample) / samplesPerFrame)
         
         // CONTINUOUS DECODING with sample-level precision
-        print("Decoding frames (FM demodulation, sample-level precision)...")
-        
-        let startTime = Date()
-        var lastUpdateTime = startTime
+        let decodeStartTime = Date()
+        var lastUpdateTime = decodeStartTime
         let updateIntervalSeconds: TimeInterval = 15.0
         
         for frameIndex in 0..<maxFrames {
@@ -171,7 +205,6 @@ struct SSTVDecoder {
             let frameEndSample = min(frameStartSample + samplesPerFrame, frequencies.count)
             
             guard frameEndSample <= frequencies.count else {
-                print("\n  Warning: Insufficient data for frame \(frameIndex)")
                 break
             }
             
@@ -201,24 +234,24 @@ struct SSTVDecoder {
             if timeSinceLastUpdate >= updateIntervalSeconds || frameIndex == 0 || frameIndex == maxFrames - 1 {
                 lastUpdateTime = currentTime
                 
-                let progress = Double(frameIndex + 1) / Double(maxFrames)
-                let elapsed = currentTime.timeIntervalSince(startTime)
-                let estimated = elapsed / progress
+                let frameProgress = Double(frameIndex + 1) / Double(maxFrames)
+                let elapsed = currentTime.timeIntervalSince(decodeStartTime)
+                let estimated = elapsed / frameProgress
                 let remaining = estimated - elapsed
                 
-                let progressBar = makeProgressBar(progress: progress, width: 30)
-                let progressPercent = Int(progress * 100)
+                // Call progress handler
                 let linesDecoded = (frameIndex + 1) * mode.linesPerFrame
-                
-                // Clear line and print progress
-                print("\r  \(progressBar) \(progressPercent)% (\(linesDecoded)/\(mode.height)) | Elapsed: \(formatTime(elapsed)) | ETA: \(formatTime(remaining))", terminator: "")
-                fflush(stdout)
+                let totalElapsed = currentTime.timeIntervalSince(startTime)
+                let decodeProgress = DecodingProgress(
+                    phase: .frameDecoding(linesDecoded: linesDecoded, totalLines: mode.height),
+                    overallProgress: 0.3 + (frameProgress * 0.7),  // Decoding is remaining 70%
+                    elapsedSeconds: totalElapsed,
+                    estimatedSecondsRemaining: remaining,
+                    modeName: mode.name
+                )
+                progressHandler?(decodeProgress)
             }
         }
-        
-        print("") // New line after progress
-        
-        print("Decoding complete!")
         return buffer
     }
     
@@ -265,8 +298,6 @@ struct SSTVDecoder {
         // A value of 0.4 (40%) was chosen to reliably detect sync pulses while tolerating
         // FM demodulation noise and minor frequency drift.
         let syncDensityThreshold = 0.4
-        
-        print("  Looking for sync patterns (samplesPerFrame: \(samplesPerFrame), samplesPerSync: \(samplesPerSync))...")
         
         // Strategy: Find EARLIEST valid sync pattern, not highest scoring
         // VIS code and leader tone can extend ~3 seconds into the file
@@ -336,13 +367,11 @@ struct SSTVDecoder {
                     syncDensityThreshold: syncDensityThreshold
                 )
                 
-                print("  Found sync pattern at sample \(adjustedIndex) (score: \(score))")
                 return adjustedIndex
             }
         }
         
         // Fallback: no valid pattern found, start from beginning
-        print("  Warning: No valid sync pattern found, starting from sample \(skipSamples)")
         return skipSamples
     }
     
@@ -444,8 +473,6 @@ struct SSTVDecoder {
         let syncDurationMs = 20.0
         let stepsPerSync = max(2, Int(syncDurationMs * sampleRate / 1000.0 / Double(stepSize)))
         
-        print("  Looking for sync patterns (stepsPerFrame: \(stepsPerFrame), stepsPerSync: \(stepsPerSync))...")
-        
         // Search for a location where we see:
         // 1. A sustained sync pulse (~20ms of 1200Hz)
         // 2. Followed by image data (1500-2300Hz)
@@ -513,7 +540,6 @@ struct SSTVDecoder {
             }
         }
         
-        print("  Found sync pattern at step \(adjustedIndex) (score: \(bestScore))")
         return adjustedIndex
     }
     
@@ -610,64 +636,5 @@ struct SSTVDecoder {
         // Write CSV file
         let csvPath = "debug_frequencies.csv"
         try? csv.write(toFile: csvPath, atomically: true, encoding: .utf8)
-        print("  Saved frequency data to \(csvPath)")
-        
-        // Print sync pulse analysis
-        print("\nDEBUG: Sync pulse analysis for first 5 frames:")
-        for frameNum in 0..<min(5, numFrames) {
-            let frameStart = startIndex + frameNum * stepsPerFrame
-            var syncSteps: [Int] = []
-            
-            for stepInFrame in 0..<stepsPerFrame {
-                let globalStep = frameStart + stepInFrame
-                guard globalStep < frequencies.count else { break }
-                
-                let freq = frequencies[globalStep]
-                if abs(freq - syncFreq) < syncTolerance {
-                    syncSteps.append(stepInFrame)
-                }
-            }
-            
-            let syncRange = syncSteps.isEmpty ? "none" : "\(syncSteps.first!)...\(syncSteps.last!)"
-            print("  Frame \(frameNum): sync pulses at steps \(syncRange) (count: \(syncSteps.count))")
-        }
-        
-        // Print frequency distribution for frame 0
-        print("\nDEBUG: Frequency distribution for frame 0:")
-        let frameStart = startIndex
-        var freqBins: [String: Int] = [
-            "1100-1250 (sync)": 0,
-            "1250-1400 (porch)": 0,
-            "1400-1600 (black)": 0,
-            "1600-1900 (gray)": 0,
-            "1900-2300 (white)": 0,
-            "other": 0
-        ]
-        
-        for stepInFrame in 0..<stepsPerFrame {
-            let globalStep = frameStart + stepInFrame
-            guard globalStep < frequencies.count else { break }
-            
-            let freq = frequencies[globalStep]
-            if freq >= 1100 && freq < 1250 {
-                freqBins["1100-1250 (sync)"]! += 1
-            } else if freq >= 1250 && freq < 1400 {
-                freqBins["1250-1400 (porch)"]! += 1
-            } else if freq >= 1400 && freq < 1600 {
-                freqBins["1400-1600 (black)"]! += 1
-            } else if freq >= 1600 && freq < 1900 {
-                freqBins["1600-1900 (gray)"]! += 1
-            } else if freq >= 1900 && freq <= 2300 {
-                freqBins["1900-2300 (white)"]! += 1
-            } else {
-                freqBins["other"]! += 1
-            }
-        }
-        
-        for (range, count) in freqBins.sorted(by: { $0.key < $1.key }) {
-            let pct = Double(count) / Double(stepsPerFrame) * 100
-            print("  \(range): \(count) (\(String(format: "%.1f", pct))%)")
-        }
-        print("")
     }
 }

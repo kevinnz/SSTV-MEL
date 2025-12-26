@@ -33,10 +33,13 @@ struct VISDetector {
     /// - Parameters:
     ///   - samples: Audio samples (mono)
     ///   - sampleRate: Sample rate in Hz
+    ///   - progressHandler: Optional callback for progress updates (0.0...1.0)
     /// - Returns: VIS detection result, or nil if not found
-    func detect(samples: [Double], sampleRate: Double) -> VISResult? {
-        print("  Scanning for VIS code...")
-        
+    func detect(
+        samples: [Double],
+        sampleRate: Double,
+        progressHandler: ((Double) -> Void)? = nil
+    ) -> VISResult? {
         // Look for leader tone (1900 Hz for ~300ms)
         let leaderFreq = 1900.0
         let leaderDurationMs = 300.0
@@ -57,8 +60,14 @@ struct VISDetector {
         
         // Track first ~30 seconds (VIS might be later in the file)
         let searchSamples = min(samples.count, Int(30.0 * sampleRate))
-        print("  Analyzing first 30 seconds...")
+        
+        // Report initial progress
+        progressHandler?(0.0)
+        
         let searchFreqs = tracker.track(samples: Array(samples[0..<searchSamples]))
+        
+        // Report progress after tracking
+        progressHandler?(0.5)
         
         // Look for sustained 1900 Hz tone
         let tolerance = 100.0 // Increased tolerance
@@ -66,10 +75,15 @@ struct VISDetector {
         var consecutiveLeader = 0
         let requiredLeaderSteps = leaderSamples / stepSize
         
-        print("  Looking for leader tone (1900 Hz)...")
         var attemptCount = 0
         
         for (index, freq) in searchFreqs.enumerated() {
+            // Report progress periodically
+            if index % 1000 == 0 {
+                let progress = 0.5 + (Double(index) / Double(searchFreqs.count) * 0.5)
+                progressHandler?(progress)
+            }
+            
             if abs(freq - leaderFreq) < tolerance {
                 if leaderStart == -1 {
                     leaderStart = index
@@ -78,7 +92,6 @@ struct VISDetector {
                 
                 if consecutiveLeader >= requiredLeaderSteps {
                     // Found leader tone, now look for VIS bits after it
-                    print("  Found leader tone at step \(leaderStart)")
                     let visStartStep = index + 1
                     attemptCount += 1
                     
@@ -88,9 +101,9 @@ struct VISDetector {
                         stepSize: stepSize,
                         sampleRate: sampleRate
                     ) {
+                        progressHandler?(1.0)
                         let startSample = visStartStep * stepSize
                         let modeName = Self.knownModes[code] ?? "Unknown"
-                        print("  Decoded VIS code: 0x\(String(code, radix: 16)) (\(modeName))")
                         return VISResult(code: code, mode: modeName, startSample: startSample)
                     } else if attemptCount < 5 {
                         // Reset and continue searching
@@ -104,7 +117,7 @@ struct VISDetector {
             }
         }
         
-        print("  VIS code not found in signal")
+        progressHandler?(1.0)
         return nil
     }
     
@@ -127,7 +140,6 @@ struct VISDetector {
         
         let freq0 = 1100.0 // Binary 0
         let freq1 = 1300.0 // Binary 1
-        let freqBreak = 1200.0 // Break/start/stop
         let tolerance = 50.0
         
         var bits: [Bool] = []
