@@ -1,10 +1,12 @@
 # Refactor SSTV Decoder to Library + CLI
 
 ## Goal
+
 Restructure the SSTV decoder project to:
 1. **Create a reusable Swift library** (`SSTVCore`) that can be used in UI applications
-2. **Keep the existing CLI** functionality as a separate executable target
-3. **Enable UI integration** with progress callbacks and async support
+2. **Prioritize macOS UI integration first**, then iPadOS/iOS (UIKit/SwiftUI) as secondary targets
+3. **Keep the existing CLI** functionality as a separate executable target
+4. **Enable UI integration** with progress callbacks and async support
 
 ## Current Structure
 ```
@@ -51,7 +53,7 @@ import PackageDescription
 
 let package = Package(
     name: "sstv",
-    platforms: [.macOS(.v13), .iOS(.v16)],
+    platforms: [.macOS(.v13), .iOS(.v16)], // macOS prioritized, iOS/iPadOS supported
     products: [
         .library(
             name: "SSTVCore",
@@ -200,12 +202,45 @@ import XCTest
 @testable import SSTVCore  // Changed from @testable import sstv
 ```
 
-### 9. Add Library Documentation
-Create a README or documentation showing how to use the library:
+do {
 
+### 9. Add Library Documentation
+Create a README or documentation showing how to use the library, prioritizing macOS UI integration:
+
+#### macOS (AppKit/SwiftUI) Example
 ```swift
-// iOS/macOS App Example
 import SSTVCore
+import AppKit
+
+let decoder = SSTVDecoder()
+let options = DecodingOptions(
+    forcedMode: .PD120,
+    phaseOffsetMs: 11.0,
+    skewMsPerLine: 0.02
+)
+
+do {
+    let buffer = try decoder.decode(
+        audio: wavFile,
+        options: options
+    ) { progress in
+        // Update progress UI on main thread
+        DispatchQueue.main.async {
+            progressBar.doubleValue = progress.percentComplete
+            progressLabel.stringValue = "Decoding: \(Int(progress.percentComplete))%"
+        }
+    }
+    let pngData = try ImageEncoder.encodePNG(buffer: buffer)
+    imageView.image = NSImage(data: pngData)
+} catch {
+    print("Decoding failed: \(error)")
+}
+```
+
+#### iPadOS/iOS (UIKit/SwiftUI) Example
+```swift
+import SSTVCore
+import UIKit
 
 let decoder = SSTVDecoder()
 let options = DecodingOptions(
@@ -224,7 +259,6 @@ do {
             progressBar.progress = Float(progress.percentComplete / 100)
         }
     }
-    
     let pngData = try ImageEncoder.encodePNG(buffer: buffer)
     imageView.image = UIImage(data: pngData)
 } catch {
@@ -242,7 +276,7 @@ do {
 - [ ] All public APIs are documented
 
 ## Benefits
-1. **Reusable**: Import `SSTVCore` in any Swift project (iOS, macOS, tvOS, watchOS)
+1. **Reusable**: Import `SSTVCore` in any Swift project (macOS prioritized, iPadOS/iOS, tvOS, watchOS supported)
 2. **Progress tracking**: UI apps can show real-time decoding progress
 3. **Flexible**: Decode from any audio source, not just files
 4. **Maintained CLI**: Command-line tool still works exactly as before
