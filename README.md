@@ -62,37 +62,49 @@ This layout is deliberate so the core decoder can later be reused by a macOS app
 sstv/
 ├─ Package.swift
 ├─ README.md
+├─ LICENSE
 │
 ├─ Sources/
-│  └─ sstv/
-│     ├─ main.swift
-│     ├─ Audio/
-│     │  └─ WAVReader.swift
-│     ├─ DSP/
-│     │  ├─ FMDemodulator.swift
-│     │  └─ Goertzel.swift
-│     ├─ SSTV/
-│     │  ├─ DecodingOptions.swift
-│     │  ├─ SSTVDecoder.swift
-│     │  ├─ SSTVMode.swift
-│     │  └─ VISDetector.swift
-│     ├─ Modes/
-│     │  ├─ PD120Mode.swift
-│     │  └─ PD180Mode.swift
-│     ├─ Image/
-│     │  ├─ ImageBuffer.swift
-│     │  └─ ImageWriter.swift
-│     └─ Util/
-│        └─ ImageComparison.swift
+│  ├─ SSTVCore/              # Library target (reusable)
+│  │  ├─ Audio/
+│  │  │  └─ WAVReader.swift
+│  │  ├─ DSP/
+│  │  │  ├─ FMDemodulator.swift
+│  │  │  └─ Goertzel.swift
+│  │  ├─ SSTV/
+│  │  │  ├─ DecodingOptions.swift
+│  │  │  ├─ SSTVDecoder.swift
+│  │  │  ├─ SSTVMode.swift
+│  │  │  └─ VISDetector.swift
+│  │  ├─ Modes/
+│  │  │  ├─ PD120Mode.swift
+│  │  │  └─ PD180Mode.swift
+│  │  ├─ Image/
+│  │  │  ├─ ImageBuffer.swift
+│  │  │  └─ ImageWriter.swift
+│  │  └─ Util/
+│  │     └─ ImageComparison.swift
+│  │
+│  └─ sstv/                   # CLI executable target
+│     └─ main.swift
 │
 ├─ Tests/
 │  └─ sstvTests/
 │     ├─ GoldenFileTests.swift
 │     └─ PD120ModeTests.swift
 │
-└─ samples/
-   ├─ PD120/
-   └─ PD180/
+├─ audio/
+│  └─ test2.wav
+│
+├─ samples/
+│  ├─ PD120/
+│  └─ PD180/
+│
+└─ docs/
+   ├─ NEXT-STEPS.md
+   ├─ PD120-Implementation.md
+   ├─ REFACTOR-TO-LIBRARY.md
+   └─ adr/
 ```
 
 ---
