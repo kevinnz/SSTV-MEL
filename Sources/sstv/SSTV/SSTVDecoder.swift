@@ -135,22 +135,6 @@ struct SSTVDecoder {
         let fmTracker = FMFrequencyTracker(sampleRate: audio.sampleRate)
         let frequencies = fmTracker.track(samples: samples)
         
-        // DEBUG: Show frequency statistics
-        if frequencies.count > 0 {
-            let minFreq = frequencies.min() ?? 0
-            let maxFreq = frequencies.max() ?? 0
-            let avgFreq = frequencies.reduce(0, +) / Double(frequencies.count)
-            print("  Frequency stats: min=\(String(format: "%.1f", minFreq)) Hz, max=\(String(format: "%.1f", maxFreq)) Hz, avg=\(String(format: "%.1f", avgFreq)) Hz")
-            
-            // Show sample of frequencies at different points
-            let samplePoints = [1000, 100000, 500000, 1000000, 2000000]
-            for pt in samplePoints {
-                if pt < frequencies.count {
-                    print("    freq[\(pt)] = \(String(format: "%.1f", frequencies[pt])) Hz")
-                }
-            }
-        }
-        
         // Calculate samples per frame (each frame contains linesPerFrame image lines)
         let samplesPerFrame = Int(mode.frameDurationMs * audio.sampleRate / 1000.0)
         
@@ -259,7 +243,7 @@ struct SSTVDecoder {
         sampleRate: Double
     ) -> Int {
         let syncFreq = mode.syncFrequencyHz  // 1200 Hz
-        let syncTolerance = 150.0  // Wider tolerance for FM demod noise
+        let syncTolerance = 150.0  // Wider tolerance for FM demod noise; ~12.5% of 1200 Hz, chosen empirically from FM-demod test captures to absorb drift/quantization while still reliably isolating sync pulses (see ADR-001 for tuning guidance).
         
         // Calculate expected samples per frame
         let samplesPerFrame = Int(mode.frameDurationMs * sampleRate / 1000.0)
@@ -268,8 +252,17 @@ struct SSTVDecoder {
         let syncDurationMs = 20.0
         let samplesPerSync = Int(syncDurationMs * sampleRate / 1000.0)
         
-        // Minimum score threshold for a valid sync pattern
+        // Minimum score threshold for a valid sync pattern.
+        // Score is based on (syncCount + imageCount); a value of 100 was chosen empirically
+        // to require multiple consistent frame syncs while still tolerating FM demodulation
+        // noise. Adjust with care, as lowering this can introduce false positives and raising
+        // it can cause valid images to be missed.
         let minValidScore = 100
+        
+        // Sync density threshold for determining sync boundaries.
+        // A value of 0.4 (40%) was chosen to reliably detect sync pulses while tolerating
+        // FM demodulation noise and minor frequency drift.
+        let syncDensityThreshold = 0.4
         
         print("  Looking for sync patterns (samplesPerFrame: \(samplesPerFrame), samplesPerSync: \(samplesPerSync))...")
         
@@ -289,8 +282,10 @@ struct SSTVDecoder {
             var score = 0
             var validFrames = 0
             
-            // Check multiple consecutive frames starting from this point
-            // Require MORE consecutive valid frames to avoid VIS code false positives
+            // Check up to 10 consecutive frames starting from this point.
+            // Elsewhere we require that at least a subset of these (e.g. 6) are valid;
+            // using a larger window with a high validity threshold reduces VIS code
+            // false positives while still allowing a few noisy frames.
             for frameNum in 0..<10 {
                 let frameStart = startIndex + frameNum * samplesPerFrame
                 if frameStart + samplesPerFrame >= frequencies.count { break }
@@ -320,7 +315,7 @@ struct SSTVDecoder {
                     }
                 }
                 
-                // Frame is valid if we have good sync (>40%) and good image data
+                // Frame is valid if we have good sync (≥40%) and good image data
                 if totalChecks > 0 && syncCount >= totalChecks * 4 / 10 && imageCount >= 5 {
                     validFrames += 1
                     score += syncCount + imageCount
@@ -328,68 +323,18 @@ struct SSTVDecoder {
             }
             
             // Accept the FIRST position with at least 6 valid consecutive frames
-            // (require more frames to avoid VIS code false positives)
             if validFrames >= 6 && score >= minValidScore {
                 // Fine-tune: find the START of the sync pulse (transition from non-sync to sync)
-                // Look for the first sample where we enter a sustained sync region
-                var adjustedIndex = startIndex
+                let adjustedIndex = fineTuneSyncStart(
+                    startIndex: startIndex,
+                    frequencies: frequencies,
+                    syncFreq: syncFreq,
+                    syncTolerance: syncTolerance,
+                    samplesPerSync: samplesPerSync,
+                    syncDensityThreshold: syncDensityThreshold
+                )
                 
-                // First, find a position with good sync density (center of sync)
-                var bestCenterIndex = startIndex
-                var bestSyncDensity = 0.0
-                
-                for offset in stride(from: -500, to: 500, by: 10) {
-                    let testIndex = startIndex + offset
-                    if testIndex < 0 || testIndex + samplesPerSync >= frequencies.count { continue }
-                    
-                    var syncCount = 0
-                    var totalCount = 0
-                    for s in stride(from: 0, to: samplesPerSync, by: 5) {
-                        let freq = frequencies[testIndex + s]
-                        if abs(freq - syncFreq) < syncTolerance {
-                            syncCount += 1
-                        }
-                        totalCount += 1
-                    }
-                    
-                    let density = Double(syncCount) / Double(max(1, totalCount))
-                    if density > bestSyncDensity {
-                        bestSyncDensity = density
-                        bestCenterIndex = testIndex
-                    }
-                }
-                
-                // Now find the START of sync by scanning backwards from center
-                // Look for where sync density drops (indicates we're before the sync pulse)
-                adjustedIndex = bestCenterIndex
-                let checkWindow = 50  // Check 50 samples at a time
-                
-                for offset in stride(from: 0, through: samplesPerSync, by: checkWindow) {
-                    let testIndex = bestCenterIndex - offset
-                    if testIndex < 0 { break }
-                    
-                    // Check if this position is still within the sync pulse
-                    var syncCount = 0
-                    for s in 0..<checkWindow {
-                        if testIndex + s < frequencies.count {
-                            let freq = frequencies[testIndex + s]
-                            if abs(freq - syncFreq) < syncTolerance {
-                                syncCount += 1
-                            }
-                        }
-                    }
-                    
-                    let density = Double(syncCount) / Double(checkWindow)
-                    if density >= 0.4 {
-                        // Still in sync region, this could be the start
-                        adjustedIndex = testIndex
-                    } else {
-                        // Left the sync region, previous position was the start
-                        break
-                    }
-                }
-                
-                print("  Found sync pattern at sample \(adjustedIndex) (score: \(score), sync density: \(String(format: "%.1f", bestSyncDensity * 100))%)")
+                print("  Found sync pattern at sample \(adjustedIndex) (score: \(score))")
                 return adjustedIndex
             }
         }
@@ -397,6 +342,82 @@ struct SSTVDecoder {
         // Fallback: no valid pattern found, start from beginning
         print("  Warning: No valid sync pattern found, starting from sample \(skipSamples)")
         return skipSamples
+    }
+    
+    /// Fine-tune sync detection by finding the precise start of the sync pulse
+    ///
+    /// - Parameters:
+    ///   - startIndex: Approximate position of sync pattern
+    ///   - frequencies: Array of demodulated frequencies
+    ///   - syncFreq: Expected sync frequency (typically 1200 Hz)
+    ///   - syncTolerance: Tolerance for sync frequency matching
+    ///   - samplesPerSync: Number of samples in a sync pulse
+    ///   - syncDensityThreshold: Minimum sync density to consider valid (e.g., 0.4 = 40%)
+    /// - Returns: Adjusted index pointing to the start of the sync pulse
+    private func fineTuneSyncStart(
+        startIndex: Int,
+        frequencies: [Double],
+        syncFreq: Double,
+        syncTolerance: Double,
+        samplesPerSync: Int,
+        syncDensityThreshold: Double
+    ) -> Int {
+        // First, find a position with good sync density (center of sync)
+        var bestCenterIndex = startIndex
+        var bestSyncDensity = 0.0
+        
+        for offset in stride(from: -500, to: 500, by: 10) {
+            let testIndex = startIndex + offset
+            if testIndex < 0 || testIndex + samplesPerSync >= frequencies.count { continue }
+            
+            var syncCount = 0
+            var totalCount = 0
+            for s in stride(from: 0, to: samplesPerSync, by: 5) {
+                let freq = frequencies[testIndex + s]
+                if abs(freq - syncFreq) < syncTolerance {
+                    syncCount += 1
+                }
+                totalCount += 1
+            }
+            
+            let density = Double(syncCount) / Double(max(1, totalCount))
+            if density > bestSyncDensity {
+                bestSyncDensity = density
+                bestCenterIndex = testIndex
+            }
+        }
+        
+        // Now find the START of sync by scanning backwards from center
+        // Look for where sync density drops (indicates we're before the sync pulse)
+        var adjustedIndex = bestCenterIndex
+        let checkWindow = 50  // Check 50 samples at a time
+        
+        for offset in stride(from: 0, through: samplesPerSync, by: checkWindow) {
+            let testIndex = bestCenterIndex - offset
+            if testIndex < 0 { break }
+            
+            // Check if this position is still within the sync pulse
+            var syncCount = 0
+            for s in 0..<checkWindow {
+                if testIndex + s < frequencies.count {
+                    let freq = frequencies[testIndex + s]
+                    if abs(freq - syncFreq) < syncTolerance {
+                        syncCount += 1
+                    }
+                }
+            }
+            
+            let density = Double(syncCount) / Double(checkWindow)
+            if density >= syncDensityThreshold {
+                // Still in sync region, this could be the start
+                adjustedIndex = testIndex
+            } else {
+                // Left the sync region, previous position was the start
+                break
+            }
+        }
+        
+        return adjustedIndex
     }
     
     /// Find the approximate start of the SSTV signal (Goertzel version - legacy)
