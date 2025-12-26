@@ -15,7 +15,7 @@ func main() {
     var forcedMode: String? = nil
     var phaseOffsetMs: Double = 0.0
     var skewMsPerLine: Double = 0.0
-    var outputFormat: ImageFormat? = nil
+    var formatType: String? = nil  // Track format type separately
     var jpegQuality: Double = 0.9
     
     // Parse optional arguments
@@ -50,9 +50,9 @@ func main() {
             if i + 1 < arguments.count {
                 let formatStr = arguments[i + 1].lowercased()
                 if formatStr == "png" {
-                    outputFormat = .png
+                    formatType = "png"
                 } else if formatStr == "jpeg" || formatStr == "jpg" {
-                    outputFormat = .jpeg(quality: jpegQuality)
+                    formatType = "jpeg"
                 } else {
                     print("Error: --format must be 'png' or 'jpeg'")
                     exit(1)
@@ -65,10 +65,6 @@ func main() {
         } else if arg == "--quality" || arg == "-q" {
             if i + 1 < arguments.count, let value = Double(arguments[i + 1]) {
                 jpegQuality = min(max(value, 0.0), 1.0)
-                // Update format if already set to JPEG
-                if case .jpeg = outputFormat {
-                    outputFormat = .jpeg(quality: jpegQuality)
-                }
                 i += 2
             } else {
                 print("Error: --quality requires a numeric value (0.0 to 1.0)")
@@ -80,12 +76,23 @@ func main() {
         }
     }
     
-    // Auto-detect format from extension if not explicitly set
-    if outputFormat == nil {
-        outputFormat = ImageFormat.from(path: outputPath)
-        // Update quality if it's JPEG
-        if case .jpeg = outputFormat {
+    // Construct final ImageFormat after all arguments are parsed
+    let outputFormat: ImageFormat
+    if let formatType = formatType {
+        // Format explicitly specified via --format
+        if formatType == "png" {
+            outputFormat = .png
+        } else {
             outputFormat = .jpeg(quality: jpegQuality)
+        }
+    } else {
+        // Auto-detect format from extension
+        let detectedFormat = ImageFormat.from(path: outputPath)
+        // Apply custom quality if it's JPEG
+        if case .jpeg = detectedFormat {
+            outputFormat = .jpeg(quality: jpegQuality)
+        } else {
+            outputFormat = detectedFormat
         }
     }
     
@@ -93,13 +100,11 @@ func main() {
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("Input:  \(inputPath)")
     print("Output: \(outputPath)")
-    if let format = outputFormat {
-        switch format {
-        case .png:
-            print("Format: PNG")
-        case .jpeg(let quality):
-            print("Format: JPEG (quality: \(String(format: "%.2f", quality)))")
-        }
+    switch outputFormat {
+    case .png:
+        print("Format: PNG")
+    case .jpeg(let quality):
+        print("Format: JPEG (quality: \(String(format: "%.2f", quality)))")
     }
     if let mode = forcedMode {
         print("Mode:   \(mode) (forced)")
@@ -144,12 +149,10 @@ func main() {
         }
         
         // Write image file
-        let formatName = outputFormat.map { format in
-            switch format {
-            case .png: return "PNG"
-            case .jpeg: return "JPEG"
-            }
-        } ?? "image"
+        let formatName = switch outputFormat {
+        case .png: "PNG"
+        case .jpeg: "JPEG"
+        }
         print("Writing \(formatName)...")
         try ImageWriter.write(buffer: buffer, to: outputPath, format: outputFormat)
         
