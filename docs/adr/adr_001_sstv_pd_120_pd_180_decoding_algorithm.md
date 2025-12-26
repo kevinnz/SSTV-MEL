@@ -50,7 +50,7 @@ Quadrature FM demodulation provides the best balance between quality, robustness
 - Accurately tracks instantaneous frequency (pixel brightness)
 - Naturally rejects amplitude noise
 - Well-suited to narrowband SSTV signals
-- Proven in mature decoders (PLL / Hilbert demod modes)
+- Proven in mature decoders (PLL / quadrature FM demod modes)
 - Deterministic behavior, easy to test and debug
 
 Unlike zero-crossing detection, this method is highly resistant to noise and jitter. Compared to FFT-based approaches, it requires less code, less state, and fewer tuning parameters while still producing high-quality images.

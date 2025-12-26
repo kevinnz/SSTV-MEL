@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Accelerate)
 import Accelerate
+#endif
 
 /// Quadrature FM Demodulator for SSTV
 ///
@@ -100,12 +102,47 @@ struct FMDemodulator {
         
         let omega = 2.0 * Double.pi * centerFrequency / sampleRate
         
-        // Use vDSP for efficient mixing
+        #if canImport(Accelerate)
+        // Use Accelerate framework for efficient vectorized operations on Apple platforms
+        // 1. Generate phase ramp
+        var phases = [Double](repeating: 0.0, count: n)
+        var phaseValue = 0.0
+        vDSP_vrampD(&phaseValue, &omega, &phases, 1, vDSP_Length(n))
+        
+        // 2. Compute sin/cos tables using Accelerate
+        var cosValues = [Double](repeating: 0.0, count: n)
+        var sinValues = [Double](repeating: 0.0, count: n)
+        var count32 = Int32(n)
+        
+        vvcos(&cosValues, phases, &count32)
+        vvsin(&sinValues, phases, &count32)
+        
+        // 3. Multiply with input samples to get I/Q components
+        // I(t) = signal(t) × cos(phase)
+        vDSP_vmulD(samples, 1,
+                   cosValues, 1,
+                   &iComponent, 1,
+                   vDSP_Length(n))
+        
+        // Q(t) = signal(t) × -sin(phase)
+        // Negative to form e^{-j·phase} = cos(phase) - j·sin(phase) for complex downconversion
+        vDSP_vmulD(samples, 1,
+                   sinValues, 1,
+                   &qComponent, 1,
+                   vDSP_Length(n))
+        var minusOne: Double = -1.0
+        vDSP_vsmulD(qComponent, 1,
+                    &minusOne,
+                    &qComponent, 1,
+                    vDSP_Length(n))
+        #else
+        // Fallback implementation for non-Apple platforms
         for i in 0..<n {
             let phase = omega * Double(i)
             iComponent[i] = samples[i] * cos(phase)
-            qComponent[i] = samples[i] * -sin(phase)  // Negative for proper rotation direction
+            qComponent[i] = samples[i] * -sin(phase)  // Negative to form e^{-j·phase} for complex downconversion
         }
+        #endif
         
         // Step 2: Low-pass filter both I and Q to remove high-frequency mixing products
         let iFiltered = applyFIRFilter(iComponent)
@@ -167,8 +204,31 @@ struct FMDemodulator {
         var output = [Double](repeating: 0.0, count: n)
         let halfTaps = filterTaps / 2
         
-        // Use vDSP_conv for efficient convolution if available
-        // For now, use direct convolution
+        #if canImport(Accelerate)
+        // Use vDSP_conv for efficient convolution on Apple platforms
+        // vDSP_conv performs: output[i] = Σ(signal[i+j] * filter[j])
+        // Need to reverse filter coefficients for proper convolution
+        var reversedFilter = filterCoeffs.reversed()
+        
+        // Convolve the entire signal with the filter
+        vDSP_convD(samples, 1,
+                   reversedFilter, 1,
+                   &output, 1,
+                   vDSP_Length(n - filterTaps + 1),
+                   vDSP_Length(filterTaps))
+        
+        // Shift the output to align with input (account for filter delay)
+        // Copy the valid convolution results to the center of the output
+        let validLength = n - filterTaps + 1
+        if validLength > 0 {
+            let tempOutput = output
+            output = [Double](repeating: 0.0, count: n)
+            for i in 0..<validLength {
+                output[i + halfTaps] = tempOutput[i]
+            }
+        }
+        #else
+        // Fallback: direct convolution for non-Apple platforms
         for i in halfTaps..<(n - halfTaps) {
             var sum = 0.0
             for j in 0..<filterTaps {
@@ -176,6 +236,7 @@ struct FMDemodulator {
             }
             output[i] = sum
         }
+        #endif
         
         return output
     }
