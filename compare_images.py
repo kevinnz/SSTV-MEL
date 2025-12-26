@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
+import sys
 from PIL import Image
 import numpy as np
 
-# Load both images
-decoded = Image.open('/Users/kevin/Documents/GitHub/SSTV-MEL/output_synced.png')
-expected = Image.open('/Users/kevin/Documents/GitHub/SSTV-MEL/expected/Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg')
+# Load both images - accept command line args or use defaults
+if len(sys.argv) >= 3:
+    decoded_path = sys.argv[1]
+    expected_path = sys.argv[2]
+else:
+    decoded_path = '/Users/kevin/Documents/GitHub/SSTV-MEL/output_synced.png'
+    expected_path = '/Users/kevin/Documents/GitHub/SSTV-MEL/expected/PD180/Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg'
+
+decoded = Image.open(decoded_path)
+expected = Image.open(expected_path)
 
 print("=== Image Dimensions ===")
 print(f"Decoded:  {decoded.size} ({decoded.mode})")
