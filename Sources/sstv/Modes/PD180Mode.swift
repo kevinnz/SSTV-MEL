@@ -43,26 +43,28 @@ struct PD180Mode: SSTVMode {
     let linesPerFrame: Int = 2
     
     /// Total duration of one transmission frame (contains 2 image lines)
-    /// Empirically tuned to match actual signal timing
-    /// Measured: 260 steps × 128 samples / 44100 Hz ≈ 754.65ms
-    let frameDurationMs: Double = 754.65
+    /// QSSTV: 187.06450 seconds / 248 frames = 754.29ms per frame
+    /// Frame = sync(20ms) + bp(2ms) + 4×visibleComponents
+    let frameDurationMs: Double = 754.29
     
     /// Duration of sync pulse at start of each frame (in ms)
+    /// QSSTV: 0.02000 seconds = 20ms
     let syncPulseMs: Double = 20.0
     
-    /// Duration of porch after sync pulse (in ms)
-    /// Empirically tuned for best horizontal alignment
-    let porchMs: Double = 0.50
+    /// Duration of porch/back porch after sync pulse (in ms)
+    /// QSSTV: bp=0.00200 seconds = 2.0ms
+    let porchMs: Double = 2.0
     
     /// Duration of each Y component (in ms) - one per image line
-    /// Empirically tuned: (754.65 - 20 - 0.5) / 4 = 183.54ms
-    let yDurationMs: Double = 183.54
+    /// QSSTV: visibleLineLength = (frameLength - fp - bp - syncDuration) / 4
+    /// = (754.29 - 0 - 2.0 - 20) / 4 = 183.07ms
+    let yDurationMs: Double = 183.07
     
     /// Duration of Cb (B-Y, blue chrominance) component (in ms)
-    let cbDurationMs: Double = 183.54
+    let cbDurationMs: Double = 183.07
     
     /// Duration of Cr (R-Y, red chrominance) component (in ms)
-    let crDurationMs: Double = 183.54
+    let crDurationMs: Double = 183.07
     
     // MARK: - Frequency Constants (in Hz)
     

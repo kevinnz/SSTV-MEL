@@ -135,6 +135,22 @@ struct SSTVDecoder {
         let fmTracker = FMFrequencyTracker(sampleRate: audio.sampleRate)
         let frequencies = fmTracker.track(samples: samples)
         
+        // DEBUG: Show frequency statistics
+        if frequencies.count > 0 {
+            let minFreq = frequencies.min() ?? 0
+            let maxFreq = frequencies.max() ?? 0
+            let avgFreq = frequencies.reduce(0, +) / Double(frequencies.count)
+            print("  Frequency stats: min=\(String(format: "%.1f", minFreq)) Hz, max=\(String(format: "%.1f", maxFreq)) Hz, avg=\(String(format: "%.1f", avgFreq)) Hz")
+            
+            // Show sample of frequencies at different points
+            let samplePoints = [1000, 100000, 500000, 1000000, 2000000]
+            for pt in samplePoints {
+                if pt < frequencies.count {
+                    print("    freq[\(pt)] = \(String(format: "%.1f", frequencies[pt])) Hz")
+                }
+            }
+        }
+        
         // Calculate samples per frame (each frame contains linesPerFrame image lines)
         let samplesPerFrame = Int(mode.frameDurationMs * audio.sampleRate / 1000.0)
         
@@ -236,13 +252,14 @@ struct SSTVDecoder {
     ///
     /// This version works with sample-rate frequency data from FM demodulation.
     /// We look for the characteristic 1200 Hz sync pulses that mark frame starts.
+    /// Strategy: Find the EARLIEST position that has valid sync patterns for multiple frames.
     private func findSignalStartFM(
         frequencies: [Double],
         mode: SSTVModeDecoder,
         sampleRate: Double
     ) -> Int {
         let syncFreq = mode.syncFrequencyHz  // 1200 Hz
-        let syncTolerance = 100.0  // Tolerance for noisy FM demod
+        let syncTolerance = 150.0  // Wider tolerance for FM demod noise
         
         // Calculate expected samples per frame
         let samplesPerFrame = Int(mode.frameDurationMs * sampleRate / 1000.0)
@@ -251,88 +268,135 @@ struct SSTVDecoder {
         let syncDurationMs = 20.0
         let samplesPerSync = Int(syncDurationMs * sampleRate / 1000.0)
         
+        // Minimum score threshold for a valid sync pattern
+        let minValidScore = 100
+        
         print("  Looking for sync patterns (samplesPerFrame: \(samplesPerFrame), samplesPerSync: \(samplesPerSync))...")
         
-        // Search for sustained sync pulses followed by image data
-        var bestScore = 0
-        var bestIndex = 0
+        // Strategy: Find EARLIEST valid sync pattern, not highest scoring
+        // VIS code and leader tone can extend ~3 seconds into the file
+        // So skip past that to find the actual image data
+        let skipSamples = Int(3.0 * sampleRate)
         
-        // Skip first ~1 second which contains the VIS header
-        let skipSamples = Int(1.0 * sampleRate)
-        let searchLimit = min(frequencies.count - samplesPerFrame * 5, frequencies.count / 2)
+        // We need enough room for a full image
+        let requiredSamples = samplesPerFrame * (mode.height / mode.linesPerFrame)
+        let searchLimit = frequencies.count - requiredSamples
         
-        // Use a coarser search step for speed (check every 100 samples)
-        let searchStep = 100
+        // Search step - check every ~1ms for fine detection
+        let searchStep = Int(sampleRate / 1000)
         
         for startIndex in stride(from: skipSamples, to: searchLimit, by: searchStep) {
             var score = 0
+            var validFrames = 0
             
-            // Check multiple frames starting from this point
-            for frameNum in 0..<5 {
+            // Check multiple consecutive frames starting from this point
+            // Require MORE consecutive valid frames to avoid VIS code false positives
+            for frameNum in 0..<10 {
                 let frameStart = startIndex + frameNum * samplesPerFrame
                 if frameStart + samplesPerFrame >= frequencies.count { break }
                 
-                // Check for sync pulse at start of frame
-                // Sample every 10th sample for speed
+                // Check for sync pulse at start of frame (1200 Hz for ~20ms)
                 var syncCount = 0
-                for s in stride(from: 0, to: samplesPerSync, by: 10) {
+                var totalChecks = 0
+                for s in stride(from: 0, to: samplesPerSync, by: 20) {
                     if frameStart + s < frequencies.count {
                         let freq = frequencies[frameStart + s]
                         if abs(freq - syncFreq) < syncTolerance {
                             syncCount += 1
                         }
+                        totalChecks += 1
                     }
                 }
                 
-                // Check for image data after sync (1500-2300 Hz)
-                let imageCheckStart = frameStart + samplesPerSync + 100
+                // Also check that after sync we have image frequencies (1500-2300 Hz)
+                let imageStart = frameStart + samplesPerSync + 50
                 var imageCount = 0
-                for s in stride(from: 0, to: 500, by: 50) {
-                    if imageCheckStart + s < frequencies.count {
-                        let freq = frequencies[imageCheckStart + s]
+                for s in stride(from: 0, to: 1000, by: 100) {
+                    if imageStart + s < frequencies.count {
+                        let freq = frequencies[imageStart + s]
                         if freq >= 1400 && freq <= 2400 {
                             imageCount += 1
                         }
                     }
                 }
                 
-                let expectedSyncSamples = samplesPerSync / 10
-                if syncCount >= expectedSyncSamples / 3 && imageCount >= 5 {
+                // Frame is valid if we have good sync (>40%) and good image data
+                if totalChecks > 0 && syncCount >= totalChecks * 4 / 10 && imageCount >= 5 {
+                    validFrames += 1
                     score += syncCount + imageCount
                 }
             }
             
-            if score > bestScore {
-                bestScore = score
-                bestIndex = startIndex
-            }
-        }
-        
-        // Fine-tune: search backward/forward for exact sync start
-        let fineSearchRange = 500
-        var adjustedIndex = bestIndex
-        var bestSyncScore = 0
-        
-        for offset in -fineSearchRange..<fineSearchRange {
-            let testIndex = bestIndex + offset
-            if testIndex < 0 || testIndex + samplesPerSync >= frequencies.count { continue }
-            
-            var syncScore = 0
-            for s in stride(from: 0, to: samplesPerSync, by: 5) {
-                let freq = frequencies[testIndex + s]
-                if abs(freq - syncFreq) < syncTolerance {
-                    syncScore += 1
+            // Accept the FIRST position with at least 6 valid consecutive frames
+            // (require more frames to avoid VIS code false positives)
+            if validFrames >= 6 && score >= minValidScore {
+                // Fine-tune: find the START of the sync pulse (transition from non-sync to sync)
+                // Look for the first sample where we enter a sustained sync region
+                var adjustedIndex = startIndex
+                
+                // First, find a position with good sync density (center of sync)
+                var bestCenterIndex = startIndex
+                var bestSyncDensity = 0.0
+                
+                for offset in stride(from: -500, to: 500, by: 10) {
+                    let testIndex = startIndex + offset
+                    if testIndex < 0 || testIndex + samplesPerSync >= frequencies.count { continue }
+                    
+                    var syncCount = 0
+                    var totalCount = 0
+                    for s in stride(from: 0, to: samplesPerSync, by: 5) {
+                        let freq = frequencies[testIndex + s]
+                        if abs(freq - syncFreq) < syncTolerance {
+                            syncCount += 1
+                        }
+                        totalCount += 1
+                    }
+                    
+                    let density = Double(syncCount) / Double(max(1, totalCount))
+                    if density > bestSyncDensity {
+                        bestSyncDensity = density
+                        bestCenterIndex = testIndex
+                    }
                 }
-            }
-            
-            if syncScore > bestSyncScore {
-                bestSyncScore = syncScore
-                adjustedIndex = testIndex
+                
+                // Now find the START of sync by scanning backwards from center
+                // Look for where sync density drops (indicates we're before the sync pulse)
+                adjustedIndex = bestCenterIndex
+                let checkWindow = 50  // Check 50 samples at a time
+                
+                for offset in stride(from: 0, through: samplesPerSync, by: checkWindow) {
+                    let testIndex = bestCenterIndex - offset
+                    if testIndex < 0 { break }
+                    
+                    // Check if this position is still within the sync pulse
+                    var syncCount = 0
+                    for s in 0..<checkWindow {
+                        if testIndex + s < frequencies.count {
+                            let freq = frequencies[testIndex + s]
+                            if abs(freq - syncFreq) < syncTolerance {
+                                syncCount += 1
+                            }
+                        }
+                    }
+                    
+                    let density = Double(syncCount) / Double(checkWindow)
+                    if density >= 0.4 {
+                        // Still in sync region, this could be the start
+                        adjustedIndex = testIndex
+                    } else {
+                        // Left the sync region, previous position was the start
+                        break
+                    }
+                }
+                
+                print("  Found sync pattern at sample \(adjustedIndex) (score: \(score), sync density: \(String(format: "%.1f", bestSyncDensity * 100))%)")
+                return adjustedIndex
             }
         }
         
-        print("  Found sync pattern at sample \(adjustedIndex) (score: \(bestScore))")
-        return adjustedIndex
+        // Fallback: no valid pattern found, start from beginning
+        print("  Warning: No valid sync pattern found, starting from sample \(skipSamples)")
+        return skipSamples
     }
     
     /// Find the approximate start of the SSTV signal (Goertzel version - legacy)
