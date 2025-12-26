@@ -85,7 +85,7 @@ final class GoldenFileTests: XCTestCase {
         
         // Decode (with auto mode detection)
         let decoder = SSTVDecoder()
-        let buffer = try decoder.decode(audio: audio, debug: false)
+        let buffer = try decoder.decode(audio: audio)
         
         // Write PNG
         try PNGWriter.write(buffer: buffer, to: outputPath)
