@@ -285,6 +285,11 @@ public enum SSTVModeSelection: Sendable {
     case pd180(PD180Parameters = PD180Parameters())
     
     /// Get the parameters for this mode selection
+    ///
+    /// Note: This property returns an existential type (`any SSTVModeParameters`)
+    /// which uses dynamic dispatch. For performance-critical code paths, consider
+    /// pattern-matching on the enum cases directly to access concrete types.
+    /// This API is provided for convenience in non-performance-critical contexts.
     public var parameters: any SSTVModeParameters {
         switch self {
         case .pd120(let params): return params

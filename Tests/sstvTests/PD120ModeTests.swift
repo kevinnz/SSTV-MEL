@@ -18,7 +18,7 @@ final class PD120ModeTests: XCTestCase {
         // Verify timing constants
         // PD120 transmits 2 lines per frame, frame duration is 508.48ms
         // Line duration = frameDuration / linesPerFrame = 508.48 / 2 = 254.24ms
-        XCTAssertEqual(mode.lineDurationMs, 254.24, accuracy: 0.01)
+        XCTAssertEqual(mode.lineDurationMs, 254.24, accuracy: 0.001)
         XCTAssertEqual(mode.syncPulseMs, 20.0, accuracy: 0.001)
         XCTAssertEqual(mode.porchMs, 2.08, accuracy: 0.001)
         
