@@ -5,6 +5,12 @@ import SSTVCore
 func main() {
     let arguments = CommandLine.arguments
     
+    // Handle --help and -h flags first
+    if arguments.contains("--help") || arguments.contains("-h") {
+        printUsage()
+        exit(0)
+    }
+    
     // Simple argument parsing
     guard arguments.count >= 2 else {
         printUsage()
