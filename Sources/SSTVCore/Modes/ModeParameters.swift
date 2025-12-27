@@ -80,7 +80,7 @@ public struct PD120Parameters: SSTVModeParameters, Sendable {
     // MARK: - Timing (milliseconds)
     
     /// Total frame duration (contains 2 image lines)
-    /// 126 seconds / 248 frames ≈ 508.48ms
+    /// Per PD120 specification: 508.48ms per frame
     public let frameDurationMs: Double
     
     /// Sync pulse duration
