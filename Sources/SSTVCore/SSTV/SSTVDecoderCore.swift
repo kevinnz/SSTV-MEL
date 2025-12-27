@@ -205,6 +205,8 @@ public final class SSTVDecoderCore {
         self.mode = mode
         self.visDetectionComplete = true
         resetState()
+        // Create image buffer for the forced mode
+        imageBuffer = ImageBuffer(width: mode.width, height: mode.height)
     }
     
     /// Set mode by name
@@ -546,18 +548,30 @@ public final class SSTVDecoderCore {
               var buffer = imageBuffer,
               signalStartFound else { return }
         
+        // Re-demodulate all accumulated samples if we have more than currently demodulated
+        if sampleBuffer.count > frequencies.count {
+            let samples = sampleBuffer.map { Double($0) }
+            if let tracker = fmTracker {
+                frequencies = tracker.track(samples: samples)
+            }
+        }
+        
         let samplesPerFrame = Int(mode.frameDurationMs * sampleRate / 1000.0)
         let numFrames = mode.height / mode.linesPerFrame
         
+        // Calculate maximum number of frames we can decode with available samples
+        let availableSamples = frequencies.count - imageStartSample
+        let maxFrames = min(numFrames, availableSamples / samplesPerFrame)
+        
         // Continue decoding frames until we run out of data
-        while currentFrameIndex < numFrames {
+        while currentFrameIndex < maxFrames {
             let frameStartSample = imageStartSample + currentFrameIndex * samplesPerFrame
             let frameEndSample = frameStartSample + samplesPerFrame
             
-            // Check if we have enough samples for this frame
+            // Double-check bounds (should always pass given maxFrames calculation)
             guard frameEndSample <= frequencies.count else {
-                // Not enough samples yet, wait for more
-                return
+                // Not enough samples for this frame
+                break
             }
             
             // Extract frequencies for this frame
@@ -631,13 +645,18 @@ public final class SSTVDecoderCore {
         // Skip past VIS code and leader tone
         let skipSamples = Int(Self.skipSecondsForVIS * sampleRate)
         
-        // Need enough room for a full image
+        // Prefer searching where there's room for a full image, but allow partial decodes
         let requiredSamples = samplesPerFrame * (mode.height / mode.linesPerFrame)
-        let searchLimit = frequencies.count - requiredSamples
+        let idealSearchLimit = frequencies.count - requiredSamples
+        
+        // If file is too short for complete image, search what we have
+        // This allows partial decodes of incomplete recordings
+        let searchLimit = max(idealSearchLimit, frequencies.count - samplesPerFrame)
         
         guard searchLimit > skipSamples else {
-            // Not enough samples to search - return failure
-            return (skipSamples, 0.0)
+            // File is extremely short, can't even search
+            // Return skipSamples with low confidence to allow attempting partial decode
+            return (skipSamples, 0.1)
         }
         
         // Search step - check every ~1ms
