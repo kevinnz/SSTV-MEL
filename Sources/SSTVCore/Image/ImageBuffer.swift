@@ -194,13 +194,17 @@ public struct ImageBuffer: Sendable {
     ///
     /// - Returns: Array of UInt8 values (R, G, B, A for each pixel)
     public func toRGBA8() -> [UInt8] {
-        return stride(from: 0, to: pixels.count, by: 3).flatMap { i in
-            [
-                UInt8(clamping: Int(pixels[i] * 255.0)),       // R
-                UInt8(clamping: Int(pixels[i + 1] * 255.0)),   // G
-                UInt8(clamping: Int(pixels[i + 2] * 255.0)),   // B
-                255                                            // A
-            ]
+        let pixelCount = width * height
+        var rgba = [UInt8]()
+        rgba.reserveCapacity(pixelCount * 4)
+        
+        for i in stride(from: 0, to: pixels.count, by: 3) {
+            rgba.append(UInt8(clamping: Int(pixels[i] * 255.0)))       // R
+            rgba.append(UInt8(clamping: Int(pixels[i + 1] * 255.0)))   // G
+            rgba.append(UInt8(clamping: Int(pixels[i + 2] * 255.0)))   // B
+            rgba.append(255)                                           // A
         }
+        
+        return rgba
     }
 }

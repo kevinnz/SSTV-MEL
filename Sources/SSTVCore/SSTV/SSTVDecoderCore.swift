@@ -518,8 +518,9 @@ public final class SSTVDecoderCore {
             sampleRate: sampleRate
         )
         
-        // Check if signal search failed (confidence == 0)
-        if confidence == 0.0 {
+        // Check if signal search failed (confidence near zero)
+        // Using epsilon for floating-point comparison
+        if confidence < 1e-9 {
             delegate?.didLoseSync()
             state = .syncLost(atLine: 0)
             return
