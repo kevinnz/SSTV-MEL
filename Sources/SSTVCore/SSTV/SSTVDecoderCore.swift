@@ -267,7 +267,11 @@ public final class SSTVDecoderCore {
             processSignalSearch()
             
         case .syncLocked:
-            // Sync locked, transition to decoding
+            // Sync locked, transition to decoding.
+            // Note: This state is transient and primarily exists for event emission
+            // and UI observability. The transition to decoding happens immediately
+            // in the same processSamples() call, but the syncLocked state is
+            // observable by delegates via didLockSync() callback.
             if let mode = mode {
                 state = .decoding(line: 0, totalLines: mode.height)
             }
@@ -277,15 +281,17 @@ public final class SSTVDecoderCore {
             processFrameDecoding()
             
         case .syncLost(let line):
-            // Attempt to recover sync
-            // For now, transition to error if we can't recover
-            if linesDecoded < (mode?.height ?? 0) / 2 {
-                // Lost sync early, try to find it again
+            // Attempt to recover sync based on configurable threshold
+            let totalLines = mode?.height ?? 0
+            let recoveryThreshold = Int(Double(totalLines) * options.syncRecoveryThreshold)
+            
+            if linesDecoded < recoveryThreshold {
+                // Lost sync early (before threshold), try to find it again
                 signalStartFound = false
                 state = .searchingSync
                 processSignalSearch()
             } else {
-                // Lost sync late, emit partial image
+                // Lost sync late (after threshold), emit partial image
                 state = .error(.syncLost(atLine: line))
                 delegate?.didEncounterError(.syncLost(atLine: line))
             }
@@ -368,9 +374,9 @@ public final class SSTVDecoderCore {
     /// This method is idempotent - calling multiple times has same effect.
     /// All instance state is cleared; no global/static state is modified.
     private func resetState() {
-        // Clear accumulated audio data
-        sampleBuffer.removeAll(keepingCapacity: false)
-        frequencies.removeAll(keepingCapacity: false)
+        // Clear accumulated audio data (preserve buffer capacity for reuse)
+        sampleBuffer.removeAll(keepingCapacity: true)
+        frequencies.removeAll(keepingCapacity: true)
         
         // Clear image state
         imageBuffer = nil
@@ -388,8 +394,8 @@ public final class SSTVDecoderCore {
         // Create fresh FM tracker (no shared state from previous decode)
         fmTracker = FMFrequencyTracker(sampleRate: sampleRate)
         
-        // Reset VIS detector state by creating a fresh instance
-        visDetector = VISDetector()
+        // VISDetector is a stateless struct, no reset needed
+        // (keeping this line for clarity in resetState method)
     }
     
     // MARK: - Diagnostic Helpers
@@ -398,12 +404,17 @@ public final class SSTVDecoderCore {
     ///
     /// Use this instead of print/printf for all debugging output.
     /// The delegate can choose to display, log, or ignore diagnostics.
+    ///
+    /// Performance note: This method checks for a delegate before creating
+    /// the DiagnosticInfo struct to avoid overhead when diagnostics aren't consumed.
     private func emitDiagnostic(
         _ level: DiagnosticInfo.Level,
         category: DiagnosticInfo.Category,
         message: String,
         data: [String: String] = [:]
     ) {
+        guard delegate != nil else { return }
+        
         let info = DiagnosticInfo(
             level: level,
             category: category,
@@ -506,6 +517,14 @@ public final class SSTVDecoderCore {
             mode: mode,
             sampleRate: sampleRate
         )
+        
+        // Check if signal search failed (confidence near zero)
+        // Using epsilon for floating-point comparison
+        if confidence < 1e-9 {
+            delegate?.didLoseSync()
+            state = .syncLost(atLine: 0)
+            return
+        }
         
         imageStartSample = startSample
         signalStartFound = true
@@ -617,8 +636,7 @@ public final class SSTVDecoderCore {
         let searchLimit = frequencies.count - requiredSamples
         
         guard searchLimit > skipSamples else {
-            delegate?.didLoseSync()
-            state = .syncLost(atLine: 0)
+            // Not enough samples to search - return failure
             return (skipSamples, 0.0)
         }
         
@@ -705,22 +723,7 @@ public final class SSTVDecoderCore {
         }
         
         // Fallback: no valid pattern found
-        delegate?.didLoseSync()
-        state = .syncLost(atLine: 0)
         return (skipSamples, 0.0)
-    }
-    
-    /// Find the start of the SSTV signal in frequency data (legacy, for compatibility)
-    private func findSignalStart(
-        frequencies: [Double],
-        mode: SSTVModeDecoder,
-        sampleRate: Double
-    ) -> Int {
-        return findSignalStartWithConfidence(
-            frequencies: frequencies,
-            mode: mode,
-            sampleRate: sampleRate
-        ).startSample
     }
     
     /// Fine-tune the sync start position

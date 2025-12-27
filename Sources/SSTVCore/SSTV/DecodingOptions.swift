@@ -49,6 +49,15 @@ public struct DecodingOptions {
     /// Maximum allowed skew in milliseconds per line (±1.0ms/line)
     public static let maxSkewMsPerLine: Double = 1.0
     
+    /// Default sync recovery threshold (as a fraction of total image lines)
+    ///
+    /// When sync is lost during decoding, the decoder will attempt recovery if
+    /// less than this fraction of lines have been decoded; otherwise it will
+    /// emit an error with a partial image.
+    ///
+    /// Default: 0.5 (50% - recover if sync lost in first half, error in second half)
+    public static let defaultSyncRecoveryThreshold: Double = 0.5
+    
     // MARK: - Phase Adjustment
     
     /// Horizontal phase offset in milliseconds.
@@ -84,6 +93,23 @@ public struct DecodingOptions {
         }
     }
     
+    // MARK: - Sync Recovery
+    
+    /// Sync recovery threshold (fraction of total image lines).
+    ///
+    /// When sync is lost during decoding, the decoder will:
+    /// - Attempt to recover sync if `linesDecoded < totalLines * syncRecoveryThreshold`
+    /// - Emit an error with partial image otherwise
+    ///
+    /// Range: 0.0 (never recover) to 1.0 (always try to recover)
+    /// Default: 0.5 (50% - recover if lost in first half)
+    ///
+    /// Setting to 1.0 means always attempt recovery; 0.0 means always fail on sync loss.
+    public var syncRecoveryThreshold: Double {
+        didSet {
+            syncRecoveryThreshold = min(max(syncRecoveryThreshold, 0.0), 1.0)
+        }
+    }
 
     
     // MARK: - Clamping Helpers
@@ -109,12 +135,15 @@ public struct DecodingOptions {
     /// - Parameters:
     ///   - phaseOffsetMs: Horizontal phase offset in milliseconds (default: 0.0)
     ///   - skewMsPerLine: Skew correction in milliseconds per line (default: 0.0)
+    ///   - syncRecoveryThreshold: Sync recovery threshold as fraction (default: 0.5)
     public init(
         phaseOffsetMs: Double = 0.0,
-        skewMsPerLine: Double = 0.0
+        skewMsPerLine: Double = 0.0,
+        syncRecoveryThreshold: Double = Self.defaultSyncRecoveryThreshold
     ) {
         self.phaseOffsetMs = phaseOffsetMs
         self.skewMsPerLine = skewMsPerLine
+        self.syncRecoveryThreshold = min(max(syncRecoveryThreshold, 0.0), 1.0)
     }
     
     /// Default options with no adjustments

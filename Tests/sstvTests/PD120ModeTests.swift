@@ -9,7 +9,7 @@ final class PD120ModeTests: XCTestCase {
         
         // Verify mode identification
         XCTAssertEqual(mode.name, "PD120")
-        XCTAssertEqual(mode.visCode, 0x5F)  // 95 decimal - corrected VIS code
+        XCTAssertEqual(mode.visCode, 0x5F)  // VIS code 95 (0x5F) per PD120 specification; older implementations/tests may have used 0x63 (99) incorrectly
         
         // Verify image dimensions
         XCTAssertEqual(mode.width, 640)
@@ -18,7 +18,7 @@ final class PD120ModeTests: XCTestCase {
         // Verify timing constants
         // PD120 transmits 2 lines per frame, frame duration is 508.48ms
         // Line duration = frameDuration / linesPerFrame = 508.48 / 2 = 254.24ms
-        XCTAssertEqual(mode.lineDurationMs, 254.24, accuracy: 0.01)
+        XCTAssertEqual(mode.lineDurationMs, 254.24, accuracy: 0.001)
         XCTAssertEqual(mode.syncPulseMs, 20.0, accuracy: 0.001)
         XCTAssertEqual(mode.porchMs, 2.08, accuracy: 0.001)
         

@@ -89,6 +89,12 @@ public struct ImageBuffer: Sendable {
     ///   - r: Red component (0.0...1.0)
     ///   - g: Green component (0.0...1.0)
     ///   - b: Blue component (0.0...1.0)
+    ///
+    /// - Note: This method updates `linesWritten` based on the y coordinate.
+    ///         For accurate progress reporting, pixels should be written in
+    ///         sequential order (top to bottom, left to right). Writing pixels
+    ///         out of order may cause `linesWritten` to report incorrect progress.
+    ///         Consider using `setRow()` when writing complete lines.
     public mutating func setPixel(x: Int, y: Int, r: Double, g: Double, b: Double) {
         guard x >= 0 && x < width && y >= 0 && y < height else {
             return
@@ -188,14 +194,15 @@ public struct ImageBuffer: Sendable {
     ///
     /// - Returns: Array of UInt8 values (R, G, B, A for each pixel)
     public func toRGBA8() -> [UInt8] {
+        let pixelCount = width * height
         var rgba = [UInt8]()
-        rgba.reserveCapacity(width * height * 4)
+        rgba.reserveCapacity(pixelCount * 4)
         
         for i in stride(from: 0, to: pixels.count, by: 3) {
-            rgba.append(UInt8(clamping: Int(pixels[i] * 255.0)))      // R
-            rgba.append(UInt8(clamping: Int(pixels[i + 1] * 255.0)))  // G
-            rgba.append(UInt8(clamping: Int(pixels[i + 2] * 255.0)))  // B
-            rgba.append(255)                                          // A
+            rgba.append(UInt8(clamping: Int(pixels[i] * 255.0)))       // R
+            rgba.append(UInt8(clamping: Int(pixels[i + 1] * 255.0)))   // G
+            rgba.append(UInt8(clamping: Int(pixels[i + 2] * 255.0)))   // B
+            rgba.append(255)                                           // A
         }
         
         return rgba
