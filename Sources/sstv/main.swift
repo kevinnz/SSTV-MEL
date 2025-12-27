@@ -5,6 +5,20 @@ import SSTVCore
 func main() {
     let arguments = CommandLine.arguments
     
+    // Handle --help and -h flags first
+    let hasHelpFlag = arguments.contains("--help") || arguments.contains("-h")
+    if hasHelpFlag {
+        // Warn if other arguments are provided alongside --help/-h, as they will be ignored
+        let nonHelpArgs = arguments.dropFirst().filter { $0 != "--help" && $0 != "-h" }
+        if !nonHelpArgs.isEmpty {
+            if let warningData = "Warning: ignoring additional arguments because --help/-h was specified.\n".data(using: .utf8) {
+                FileHandle.standardError.write(warningData)
+            }
+        }
+        printUsage()
+        exit(0)
+    }
+    
     // Simple argument parsing
     guard arguments.count >= 2 else {
         printUsage()
