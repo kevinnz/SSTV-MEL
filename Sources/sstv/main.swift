@@ -1,6 +1,88 @@
 import Foundation
 import SSTVCore
 
+// MARK: - CLI Decoder Delegate
+//
+// The CLI uses SSTVDecoderCore (the streaming decoder engine) instead of
+// the legacy SSTVDecoder. This ensures the decoder-core is validated and
+// demonstrates proper usage for UI integration.
+
+/// CLI delegate that handles decoder events and displays progress
+final class CLIDecoderDelegate: DecoderDelegate {
+    private let startTime = Date()
+    private var lastProgressUpdate = Date()
+    private let updateInterval: TimeInterval = 1.0
+    private var detectedMode: String?
+    
+    func didBeginVISDetection() {
+        print("  Detecting VIS code...")
+    }
+    
+    func didDetectVISCode(_ code: UInt8, mode: String) {
+        detectedMode = mode
+        print("  VIS code: 0x\(String(format: "%02X", code)) → \(mode)")
+    }
+    
+    func didFailVISDetection() {
+        print("  VIS detection failed, defaulting to PD120")
+        detectedMode = "PD120"
+    }
+    
+    func didLockSync(confidence: Float) {
+        print("  Sync locked (\(Int(confidence * 100))% confidence)")
+    }
+    
+    func didLoseSync() {
+        print("\n  ⚠ Sync lost, attempting recovery...")
+    }
+    
+    func didDecodeLine(lineNumber: Int, totalLines: Int) {
+        let now = Date()
+        if now.timeIntervalSince(lastProgressUpdate) >= updateInterval {
+            lastProgressUpdate = now
+            printLineProgress(lineNumber: lineNumber, totalLines: totalLines)
+        }
+    }
+    
+    func didUpdateProgress(_ progress: Float) {
+        // Progress is handled by didDecodeLine for line-level granularity
+    }
+    
+    func didCompleteImage(_ imageBuffer: ImageBuffer) {
+        // Clear progress line and print completion
+        print("")
+    }
+    
+    func didChangeState(_ state: DecoderState) {
+        // State changes are implicit in other events
+    }
+    
+    func didEncounterError(_ error: DecoderError) {
+        print("\n  ⚠ Decoder error: \(error.description)")
+    }
+    
+    func didEmitDiagnostic(_ info: DiagnosticInfo) {
+        // Diagnostics are not shown in CLI by default
+        // Could be enabled with a --verbose flag
+    }
+    
+    private func printLineProgress(lineNumber: Int, totalLines: Int) {
+        let elapsed = Date().timeIntervalSince(startTime)
+        let progress = Double(lineNumber + 1) / Double(totalLines)
+        let estimated = elapsed / progress
+        let remaining = estimated - elapsed
+        
+        let progressBar = makeProgressBar(progress: progress, width: 30)
+        let percent = Int(progress * 100)
+        
+        var status = "\r  \(progressBar) \(percent)% | Decoding: \(lineNumber + 1)/\(totalLines) lines"
+        status += " | ETA: \(formatTime(remaining))"
+        
+        print(status, terminator: "")
+        fflush(stdout)
+    }
+}
+
 /// Command-line SSTV decoder
 func main() {
     let arguments = CommandLine.arguments
@@ -149,7 +231,7 @@ func main() {
     print("")
     
     do {
-        // Read WAV file
+        // Read WAV file (file I/O is CLI responsibility, not decoder-core)
         print("Reading audio file...")
         let audio = try WAVReader.read(path: inputPath)
         
@@ -157,34 +239,59 @@ func main() {
         print("  Sample rate: \(audio.sampleRate) Hz")
         print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
         
-        // Decode with auto mode detection or forced mode
-        let decoder = SSTVDecoder()
-        let buffer: ImageBuffer
+        // Create decoder-core with sample rate
+        let decoder = SSTVDecoderCore(sampleRate: audio.sampleRate)
+        decoder.options = options
         
-        var lastProgressUpdate = Date()
-        let progressUpdateInterval: TimeInterval = 1.0  // Update every second
+        // Set up CLI delegate to receive events
+        let delegate = CLIDecoderDelegate()
+        decoder.delegate = delegate
         
+        // Force mode if specified, otherwise auto-detect via VIS
         if let modeStr = forcedMode {
-            buffer = try decoder.decode(audio: audio, forcedMode: modeStr, options: options) { progress in
-                let now = Date()
-                if now.timeIntervalSince(lastProgressUpdate) >= progressUpdateInterval ||
-                   progress.overallProgress >= 0.99 {
-                    lastProgressUpdate = now
-                    printProgress(progress)
-                }
-            }
-        } else {
-            buffer = try decoder.decode(audio: audio, options: options) { progress in
-                let now = Date()
-                if now.timeIntervalSince(lastProgressUpdate) >= progressUpdateInterval ||
-                   progress.overallProgress >= 0.99 {
-                    lastProgressUpdate = now
-                    printProgress(progress)
-                }
+            if !decoder.setMode(named: modeStr) {
+                print("ERROR: Unknown mode '\(modeStr)'")
+                print("  Supported modes: PD120, PD180")
+                exit(1)
             }
         }
         
-        print("")  // New line after progress updates
+        // Feed all samples to the decoder (batch mode)
+        // In a UI app, you would feed samples incrementally
+        let samples = audio.monoSamples.map { Float($0) }
+        decoder.processSamples(samples)
+        
+        // Check result
+        let buffer: ImageBuffer
+        switch decoder.state {
+        case .complete:
+            guard let decodedBuffer = decoder.imageBuffer else {
+                print("ERROR: Decoding completed but no image buffer available")
+                exit(1)
+            }
+            buffer = decodedBuffer
+            
+        case .error(let error):
+            // Check if we have a partial image
+            if let partialBuffer = decoder.imageBuffer, decoder.linesDecoded > 0 {
+                print("  ⚠ Partial image: \(decoder.linesDecoded) lines decoded")
+                buffer = partialBuffer
+            } else {
+                print("ERROR: Decoding failed")
+                print("  \(error.description)")
+                exit(1)
+            }
+            
+        default:
+            // Still need more samples or in unexpected state
+            if let partialBuffer = decoder.imageBuffer, decoder.linesDecoded > 0 {
+                print("  ⚠ Incomplete decode: \(decoder.linesDecoded) lines")
+                buffer = partialBuffer
+            } else {
+                print("ERROR: Insufficient samples for decoding")
+                exit(1)
+            }
+        }
         
         // Write image file
         let formatName = switch outputFormat {
@@ -214,54 +321,6 @@ func main() {
         print("ERROR: Unexpected error")
         print("  \(error)")
         exit(1)
-    }
-}
-
-/// Print progress update
-func printProgress(_ progress: DecodingProgress) {
-    let progressBar = makeProgressBar(progress: progress.overallProgress, width: 30)
-    let percent = Int(progress.overallProgress * 100)
-    
-    var status = "\r  \(progressBar) \(percent)%"
-    
-    // Add phase-specific info
-    switch progress.phase {
-    case .visDetection:
-        status += " | Detecting VIS code..."
-    case .fmDemodulation:
-        status += " | Demodulating FM signal..."
-    case .signalSearch:
-        status += " | Searching for signal start..."
-    case .frameDecoding(let lines, let total):
-        status += " | Decoding: \(lines)/\(total) lines"
-        if let eta = progress.estimatedSecondsRemaining {
-            status += " | ETA: \(formatTime(eta))"
-        }
-    case .writing:
-        status += " | Writing output..."
-    }
-    
-    print(status, terminator: "")
-    fflush(stdout)
-}
-
-/// Create a progress bar string
-func makeProgressBar(progress: Double, width: Int) -> String {
-    let filled = Int(progress * Double(width))
-    let empty = width - filled
-    return "[" + String(repeating: "█", count: filled) + String(repeating: "░", count: empty) + "]"
-}
-
-/// Format time interval in human-readable format
-func formatTime(_ seconds: TimeInterval) -> String {
-    let totalSeconds = Int(seconds)
-    let minutes = totalSeconds / 60
-    let secs = totalSeconds % 60
-    
-    if minutes > 0 {
-        return "\(minutes)m \(secs)s"
-    } else {
-        return "\(secs)s"
     }
 }
 
@@ -306,6 +365,26 @@ func printUsage() {
     print("  sstv input.wav -p 1.5                  # Shift image 1.5ms right")
     print("  sstv input.wav -s 0.02                 # Correct 0.02ms/line skew")
     print("  sstv input.wav -p 1.0 -s -0.01         # Combined phase and skew")
+}
+
+/// Create a progress bar string
+func makeProgressBar(progress: Double, width: Int) -> String {
+    let filled = Int(progress * Double(width))
+    let empty = width - filled
+    return "[" + String(repeating: "█", count: filled) + String(repeating: "░", count: empty) + "]"
+}
+
+/// Format time interval in human-readable format
+func formatTime(_ seconds: TimeInterval) -> String {
+    let totalSeconds = Int(seconds)
+    let minutes = totalSeconds / 60
+    let secs = totalSeconds % 60
+    
+    if minutes > 0 {
+        return "\(minutes)m \(secs)s"
+    } else {
+        return "\(secs)s"
+    }
 }
 
 // Run main
