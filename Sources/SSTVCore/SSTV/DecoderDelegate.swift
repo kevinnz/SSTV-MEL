@@ -199,6 +199,11 @@ public struct DiagnosticInfo: Sendable {
     public let data: [String: String]
     
     /// Timestamp when diagnostic was created
+    ///
+    /// Note: The timestamp is for display and logging purposes only.
+    /// DiagnosticInfo instances are not intended to be compared for equality
+    /// or stored in sets/dictionaries. Each diagnostic emission creates a
+    /// new instance with a unique timestamp.
     public let timestamp: Date
     
     public init(
@@ -220,10 +225,15 @@ public struct DiagnosticInfo: Sendable {
 // Explicit state machine for decoder lifecycle.
 // The decoder always exists in exactly one of these states.
 //
-// STATE TRANSITIONS:
+// STATE TRANSITIONS (high-level):
 //   idle → detectingVIS → searchingSync → syncLocked → decoding → complete
-//                                       ↓              ↑
-//                                    syncLost ─────────┘
+//                                       ↓              ↑           │
+//                                (early) syncLost ─────┘           │
+//                                       │                          │
+//                                       └────────────→ error ◀─────┘
+//
+// Note: The syncLost → searchingSync transition only occurs on early sync loss
+// (before half the image is decoded); otherwise syncLost transitions to error.
 //
 // The state machine is designed to support UI feedback at each phase.
 
