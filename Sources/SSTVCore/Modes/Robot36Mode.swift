@@ -377,22 +377,25 @@ extension Robot36Mode {
     ///
     /// - Parameter frequency: Detected frequency in Hz
     /// - Returns: Normalized luminance value (0.0...1.0), clamped
-    private func frequencyToLuminance(_ frequency: Double) -> Double {
+    internal func frequencyToLuminance(_ frequency: Double) -> Double {
         let normalized = (frequency - blackFrequencyHz) / frequencyRangeHz
         return min(max(normalized, 0.0), 1.0)
     }
     
     /// Convert a detected frequency to a normalized chrominance value.
     ///
-    /// Robot36 uses 1900 Hz as the zero reference for chrominance.
+    /// Robot36 uses chromaZeroFrequencyHz (1900 Hz) as the zero reference for chrominance.
     /// The range [1500...2300] Hz maps to [0.0...1.0] for compatibility
     /// with the YCbCr conversion that expects values centered at 0.5.
     ///
+    /// The neutral point chromaZeroFrequencyHz maps to 0.5, calculated as:
+    /// (chromaZeroFrequencyHz - blackFrequencyHz) / frequencyRangeHz = (1900 - 1500) / 800 = 0.5
+    ///
     /// - Parameter frequency: Detected frequency in Hz
     /// - Returns: Normalized chrominance value (0.0...1.0), clamped
-    private func frequencyToChroma(_ frequency: Double) -> Double {
+    internal func frequencyToChroma(_ frequency: Double) -> Double {
         // Map [1500...2300] to [0.0...1.0]
-        // This places 1900 Hz at 0.5 (neutral chrominance)
+        // This places chromaZeroFrequencyHz (1900 Hz) at 0.5 (neutral chrominance)
         let normalized = (frequency - blackFrequencyHz) / frequencyRangeHz
         return min(max(normalized, 0.0), 1.0)
     }
@@ -407,7 +410,7 @@ extension Robot36Mode {
     ///   - cr: Red chrominance (0.0...1.0)
     ///
     /// - Returns: RGB tuple, each component in range (0.0...1.0), clamped
-    private func ycbcrToRGB(y: Double, cb: Double, cr: Double) -> (r: Double, g: Double, b: Double) {
+    internal func ycbcrToRGB(y: Double, cb: Double, cr: Double) -> (r: Double, g: Double, b: Double) {
         // Center Cb and Cr around 0.5
         let cbCentered = cb - 0.5
         let crCentered = cr - 0.5
