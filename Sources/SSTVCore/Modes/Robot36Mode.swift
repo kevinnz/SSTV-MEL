@@ -384,15 +384,18 @@ extension Robot36Mode {
     
     /// Convert a detected frequency to a normalized chrominance value.
     ///
-    /// Robot36 uses 1900 Hz as the zero reference for chrominance.
+    /// Robot36 uses chromaZeroFrequencyHz (1900 Hz) as the zero reference for chrominance.
     /// The range [1500...2300] Hz maps to [0.0...1.0] for compatibility
     /// with the YCbCr conversion that expects values centered at 0.5.
+    ///
+    /// The neutral point chromaZeroFrequencyHz maps to 0.5, calculated as:
+    /// (chromaZeroFrequencyHz - blackFrequencyHz) / frequencyRangeHz = (1900 - 1500) / 800 = 0.5
     ///
     /// - Parameter frequency: Detected frequency in Hz
     /// - Returns: Normalized chrominance value (0.0...1.0), clamped
     private func frequencyToChroma(_ frequency: Double) -> Double {
         // Map [1500...2300] to [0.0...1.0]
-        // This places 1900 Hz at 0.5 (neutral chrominance)
+        // This places chromaZeroFrequencyHz (1900 Hz) at 0.5 (neutral chrominance)
         let normalized = (frequency - blackFrequencyHz) / frequencyRangeHz
         return min(max(normalized, 0.0), 1.0)
     }
