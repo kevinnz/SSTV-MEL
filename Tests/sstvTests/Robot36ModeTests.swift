@@ -302,31 +302,3 @@ final class Robot36ModeTests: XCTestCase {
         XCTAssertEqual(frame1[0].count, mode.width * 3)
     }
 }
-
-// Extension to access private methods for testing
-extension Robot36Mode {
-    func frequencyToLuminance(_ frequency: Double) -> Double {
-        let normalized = (frequency - blackFrequencyHz) / frequencyRangeHz
-        return min(max(normalized, 0.0), 1.0)
-    }
-    
-    func frequencyToChroma(_ frequency: Double) -> Double {
-        let normalized = (frequency - blackFrequencyHz) / frequencyRangeHz
-        return min(max(normalized, 0.0), 1.0)
-    }
-    
-    func ycbcrToRGB(y: Double, cb: Double, cr: Double) -> (r: Double, g: Double, b: Double) {
-        let cbCentered = cb - 0.5
-        let crCentered = cr - 0.5
-        
-        let r = y + 1.402 * crCentered
-        let g = y - 0.344136 * cbCentered - 0.714136 * crCentered
-        let b = y + 1.772 * cbCentered
-        
-        return (
-            r: min(max(r, 0.0), 1.0),
-            g: min(max(g, 0.0), 1.0),
-            b: min(max(b, 0.0), 1.0)
-        )
-    }
-}
