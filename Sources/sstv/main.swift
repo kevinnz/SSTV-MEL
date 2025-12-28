@@ -251,7 +251,7 @@ func main() {
         if let modeStr = forcedMode {
             if !decoder.setMode(named: modeStr) {
                 print("ERROR: Unknown mode '\(modeStr)'")
-                print("  Supported modes: PD120, PD180")
+                print("  Supported modes: PD120, PD180, Robot36")
                 exit(1)
             }
         }
@@ -335,7 +335,7 @@ func printUsage() {
     print("                Format auto-detected from extension (.png, .jpg, .jpeg)")
     print("")
     print("Options:")
-    print("  --mode, -m <MODE>     Force SSTV mode (PD120, PD180)")
+    print("  --mode, -m <MODE>     Force SSTV mode (PD120, PD180, Robot36)")
     print("                        If not specified, mode is auto-detected via VIS code")
     print("")
     print("  --format, -f <FORMAT> Output format: 'png' or 'jpeg'")

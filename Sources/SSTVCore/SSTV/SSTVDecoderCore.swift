@@ -224,6 +224,9 @@ public final class SSTVDecoderCore {
         case "PD180":
             setMode(PD180Mode())
             return true
+        case "ROBOT36":
+            setMode(Robot36Mode())
+            return true
         default:
             delegate?.didEncounterError(.unknownMode(modeName))
             return false
@@ -469,6 +472,9 @@ public final class SSTVDecoderCore {
             case 0x5F:  // 95 decimal - PD120
                 mode = PD120Mode()
                 delegate?.didDetectVISCode(visResult.code, mode: "PD120")
+            case 0x08:  // 8 decimal - Robot36
+                mode = Robot36Mode()
+                delegate?.didDetectVISCode(visResult.code, mode: "Robot36")
             default:
                 // Unknown VIS code, default to PD120
                 mode = PD120Mode()
