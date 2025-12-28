@@ -14,7 +14,7 @@ This project is **library-first**, with a CLI built on top, designed for easy in
 - Support common modes:
   - **PD120** ✅ Implemented
   - **PD180** ✅ Implemented
-  - Robot36 (planned)
+  - **Robot36** ✅ Implemented
 - Produce deterministic, testable output
 - Keep DSP, protocol logic, and image handling cleanly separated
 - Avoid premature GUI decisions
@@ -85,7 +85,8 @@ sstv/
 │  │  │  └─ VISDetector.swift
 │  │  ├─ Modes/
 │  │  │  ├─ PD120Mode.swift
-│  │  │  └─ PD180Mode.swift
+│  │  │  ├─ PD180Mode.swift
+│  │  │  └─ Robot36Mode.swift
 │  │  ├─ Image/
 │  │  │  ├─ ImageBuffer.swift
 │  │  │  └─ ImageWriter.swift
@@ -106,7 +107,8 @@ sstv/
 │
 ├─ samples/
 │  ├─ PD120/
-│  └─ PD180/
+│  ├─ PD180/
+│  └─ Robot36/
 │
 └─ docs/
    ├─ NEXT-STEPS.md
@@ -327,6 +329,7 @@ swift run sstv input.wav output.png
 # Force a specific mode
 swift run sstv input.wav --mode PD120
 swift run sstv input.wav --mode PD180
+swift run sstv input.wav --mode Robot36
 ```
 
 ---
@@ -434,7 +437,7 @@ swift run sstv input.wav --mode PD180 -p 5 -s 0.01
 |---------|----------|
 | Image shifted horizontally | Adjust `-p` (try values between -15 and +15) |
 | Vertical lines appear slanted | Adjust `-s` (try values between -0.05 and +0.05) |
-| Wrong colors or stretched image | Force correct mode with `--mode PD120` or `--mode PD180` |
+| Wrong colors or stretched image | Force correct mode with `--mode PD120`, `--mode PD180`, or `--mode Robot36` |
 | Image looks compressed/expanded | You may be using wrong mode; try the other one |
 
 ---
@@ -487,8 +490,8 @@ They exist to prevent subtle DSP breakage and architectural drift.
 
 * [x] **PD120** - Implemented and tested
 * [x] **PD180** - Implemented and tested
-* [ ] Robot36
-* [ ] Additional Robot modes
+* [x] **Robot36** - Implemented and tested
+* [ ] Additional Robot modes (Robot72)
 * [ ] Additional PD modes (PD50, PD160, PD240)
 
 Mode implementations live in `Sources/SSTVCore/Modes/` and should read like specifications, not algorithms.
@@ -503,6 +506,7 @@ Completed:
 * ✅ VIS code detection and auto-mode selection
 * ✅ PD120 decode with YCbCr color space
 * ✅ PD180 decode with YCbCr color space
+* ✅ Robot36 decode with YCbCr 4:2:0 color space
 * ✅ PNG output
 * ✅ JPEG output with quality control
 * ✅ FM demodulation for accurate frequency tracking
@@ -510,7 +514,7 @@ Completed:
 
 Near-term:
 
-* Robot36 mode support
+* Additional Robot modes (Robot72)
 * Additional PD modes (PD50, PD160, PD240)
 * Improved sync tolerance
 
