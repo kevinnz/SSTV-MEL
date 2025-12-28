@@ -191,6 +191,8 @@ public final class SSTVDecoderCore {
         self.mode = mode
         self.visDetectionComplete = true
         self.fmTracker = FMFrequencyTracker(sampleRate: sampleRate)
+        // Create image buffer for the forced mode
+        self.imageBuffer = ImageBuffer(width: mode.width, height: mode.height)
     }
     
     // MARK: - Public API
