@@ -160,18 +160,22 @@ public struct WAVReader {
     }
     
     private static func readUInt16(_ data: Data, at offset: Int) -> UInt16 {
-        let bytes = data[offset..<offset+2]
-        return bytes.withUnsafeBytes { $0.load(as: UInt16.self) }
+        // Read bytes individually to avoid alignment issues
+        return UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
     }
     
     private static func readUInt32(_ data: Data, at offset: Int) -> UInt32 {
-        let bytes = data[offset..<offset+4]
-        return bytes.withUnsafeBytes { $0.load(as: UInt32.self) }
+        // Read bytes individually to avoid alignment issues
+        return UInt32(data[offset]) |
+               (UInt32(data[offset + 1]) << 8) |
+               (UInt32(data[offset + 2]) << 16) |
+               (UInt32(data[offset + 3]) << 24)
     }
     
     private static func readInt16(_ data: Data, at offset: Int) -> Int16 {
-        let bytes = data[offset..<offset+2]
-        return bytes.withUnsafeBytes { $0.load(as: Int16.self) }
+        // Read bytes individually to avoid alignment issues
+        let unsigned = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+        return Int16(bitPattern: unsigned)
     }
     
     private static func readSamples(
@@ -241,12 +245,24 @@ public struct WAVReader {
     }
     
     private static func readFloat32(_ data: Data, at offset: Int) -> Float {
-        let bytes = data[offset..<offset+4]
-        return bytes.withUnsafeBytes { $0.load(as: Float.self) }
+        // Read bytes individually to avoid alignment issues
+        let bits = UInt32(data[offset]) |
+                   (UInt32(data[offset + 1]) << 8) |
+                   (UInt32(data[offset + 2]) << 16) |
+                   (UInt32(data[offset + 3]) << 24)
+        return Float(bitPattern: bits)
     }
     
     private static func readFloat64(_ data: Data, at offset: Int) -> Double {
-        let bytes = data[offset..<offset+8]
-        return bytes.withUnsafeBytes { $0.load(as: Double.self) }
+        // Read bytes individually to avoid alignment issues
+        let bits = UInt64(data[offset]) |
+                   (UInt64(data[offset + 1]) << 8) |
+                   (UInt64(data[offset + 2]) << 16) |
+                   (UInt64(data[offset + 3]) << 24) |
+                   (UInt64(data[offset + 4]) << 32) |
+                   (UInt64(data[offset + 5]) << 40) |
+                   (UInt64(data[offset + 6]) << 48) |
+                   (UInt64(data[offset + 7]) << 56)
+        return Double(bitPattern: bits)
     }
 }

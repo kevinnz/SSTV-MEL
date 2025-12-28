@@ -26,9 +26,10 @@ public protocol SSTVModeDecoder {
     var name: String { get }
 }
 
-// Make both modes conform to the decoder protocol
+// Make all modes conform to the decoder protocol
 extension PD120Mode: SSTVModeDecoder {}
 extension PD180Mode: SSTVModeDecoder {}
+extension Robot36Mode: SSTVModeDecoder {}
 
 /// SSTV Decoder - coordinates the complete decoding process
 ///
@@ -83,6 +84,8 @@ public struct SSTVDecoder {
                 mode = PD180Mode()
             case 0x5F:  // 95 decimal
                 mode = PD120Mode()
+            case 0x08:  // 8 decimal - Robot36
+                mode = Robot36Mode()
             default:
                 mode = PD120Mode()
             }
@@ -123,6 +126,8 @@ public struct SSTVDecoder {
             mode = PD120Mode()
         case "PD180":
             mode = PD180Mode()
+        case "ROBOT36":
+            mode = Robot36Mode()
         default:
             throw DecodingError.unknownMode(forcedMode)
         }
