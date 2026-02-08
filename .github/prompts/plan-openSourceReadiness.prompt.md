@@ -40,7 +40,7 @@ This repo is already in strong shape — MIT license, zero external dependencies
 
 15. ~~**Clarify `audio/` vs `samples/`**~~ — **DONE.** Created `audio/README.md` explaining these are ad-hoc development test files (not part of automated tests), with a cross-reference to `samples/` for the primary test suite.
 
-16. **Add PD180 unit tests** — `PD180ModeTests.swift` doesn't exist, unlike PD120 and Robot36 which both have dedicated test files.
+16. ~~**Add PD180 unit tests**~~ — **DONE.** Created `Tests/sstvTests/PD180ModeTests.swift` with 10 tests: mode constants, PD180 vs PD120 timing comparison, `lineDurationMs` computed property, `decodeFrame` with mid-gray and black luminance synthetic data, `decodeLine` legacy interface, line-from-frame selection, multi-frame state independence, `DecodingOptions` integration, and `ImageBuffer` integration. All 10 tests pass. All 3 modes (PD120, PD180, Robot36) now have dedicated test files.
 
 17. **Consider SwiftLint** — No linting config exists, though the code is already clean. A `.swiftlint.yml` would enforce consistency for future contributors.
 
@@ -56,9 +56,9 @@ This repo is already in strong shape — MIT license, zero external dependencies
 
 **All 4 critical steps complete.** The repo has no blockers for open source release.
 Steps 5–12 (recommended): **all done.**
-Steps 13–17 (optional): steps 13, 14, and 15 done; steps 16 and 17 not yet started.
+Steps 13–17 (optional): steps 13, 14, 15, and 16 done; step 17 (SwiftLint) not yet started.
 
-The repo is **ready for open source** from a code/security/licensing/documentation perspective. All critical and recommended steps are complete. The remaining optional steps (PD180 tests, SwiftLint) are nice-to-haves that can be done post-launch.
+The repo is **ready for open source** from a code/security/licensing/documentation/testing perspective. All critical and recommended steps are complete. 16 of 17 steps done. The only remaining step is SwiftLint (step 17), which is purely optional.
 
 **To publish:** `git push --force-with-lease && git push --tags` (force-push needed due to LFS history rewrite from step 2).
 
