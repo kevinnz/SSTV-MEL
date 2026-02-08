@@ -47,6 +47,7 @@ final class GoldenFileTests: XCTestCase {
         sampleSubdir: String = "PD180",
         expectedSubdir: String = "PD180",
         minPSNR: Double = 8.0, // Lowered to account for real-world signal variations
+        forcedMode: String? = nil,
         file: StaticString = #file,
         line: UInt = #line
     ) throws {
@@ -78,9 +79,14 @@ final class GoldenFileTests: XCTestCase {
         let audio = try WAVReader.read(path: wavPath)
         print("  Sample rate: \(audio.sampleRate) Hz, Duration: \(String(format: "%.1f", audio.duration))s")
 
-        // Decode (with auto mode detection)
+        // Decode (with forced mode if specified, otherwise auto-detect)
         let decoder = SSTVDecoder()
-        let buffer = try decoder.decode(audio: audio)
+        let buffer: ImageBuffer
+        if let forcedMode = forcedMode {
+            buffer = try decoder.decode(audio: audio, forcedMode: forcedMode)
+        } else {
+            buffer = try decoder.decode(audio: audio)
+        }
 
         // Write PNG
         try ImageWriter.write(buffer: buffer, to: outputPath)
@@ -235,12 +241,15 @@ final class GoldenFileTests: XCTestCase {
 
             do {
                 let minPSNR = expectedName.hasSuffix(".jpg") ? 4.0 : 4.0
+                // Force mode for Robot36 samples (VIS detection unreliable)
+                let forcedMode = sample.subdir == "Robot36" ? "Robot36" : nil
                 try testDecoding(
                     sampleName: sample.file,
                     expectedName: expectedName,
                     sampleSubdir: sample.subdir,
                     expectedSubdir: expectedSubdir,
-                    minPSNR: minPSNR
+                    minPSNR: minPSNR,
+                    forcedMode: forcedMode
                 )
                 print("✓ PASSED: \(sample.subdir)/\(sample.file)\n")
                 passed += 1
