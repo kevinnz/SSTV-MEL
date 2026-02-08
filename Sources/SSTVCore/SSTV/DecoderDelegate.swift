@@ -37,9 +37,9 @@ import Foundation
 /// }
 /// ```
 public protocol DecoderDelegate: AnyObject {
-    
+
     // MARK: - Sync Events
-    
+
     /// Called when the decoder locks onto a sync pattern
     ///
     /// This indicates the decoder has found a valid SSTV signal and is
@@ -50,7 +50,7 @@ public protocol DecoderDelegate: AnyObject {
     ///   - 0.4-0.7: Medium confidence, acceptable signal quality
     ///   - 0.8-1.0: High confidence, strong sync pattern detected
     func didLockSync(confidence: Float)
-    
+
     /// Called when the decoder loses sync
     ///
     /// This may happen due to:
@@ -61,31 +61,31 @@ public protocol DecoderDelegate: AnyObject {
     ///
     /// The decoder may attempt to recover, or may transition to error state.
     func didLoseSync()
-    
+
     // MARK: - VIS Code Events
-    
+
     /// Called when VIS code detection begins
     ///
     /// The VIS (Vertical Interval Signaling) code is a header that
     /// identifies the SSTV mode being transmitted.
     func didBeginVISDetection()
-    
+
     /// Called when a VIS code is successfully detected
     ///
     /// - Parameters:
     ///   - code: The detected VIS code value (0-255)
     ///   - mode: The SSTV mode name (e.g., "PD120", "PD180")
     func didDetectVISCode(_ code: UInt8, mode: String)
-    
+
     /// Called when VIS code detection fails
     ///
     /// The decoder will fall back to the configured default mode.
     /// This is not necessarily an error - some signals may not include
     /// a VIS code, or it may be corrupted.
     func didFailVISDetection()
-    
+
     // MARK: - Decoding Events
-    
+
     /// Called when a complete image line has been decoded
     ///
     /// This is the primary event for progressive rendering. Each call
@@ -95,7 +95,7 @@ public protocol DecoderDelegate: AnyObject {
     ///   - lineNumber: The 0-based line index that was decoded
     ///   - totalLines: Total number of lines in the image
     func didDecodeLine(lineNumber: Int, totalLines: Int)
-    
+
     /// Called periodically with overall decode progress
     ///
     /// This event is throttled to avoid overwhelming the UI with updates.
@@ -103,7 +103,7 @@ public protocol DecoderDelegate: AnyObject {
     ///
     /// - Parameter progress: Progress value (0.0...1.0)
     func didUpdateProgress(_ progress: Float)
-    
+
     /// Called when a complete image has been decoded
     ///
     /// The provided buffer contains the fully decoded image and can be
@@ -111,9 +111,9 @@ public protocol DecoderDelegate: AnyObject {
     ///
     /// - Parameter imageBuffer: The completed image buffer
     func didCompleteImage(_ imageBuffer: ImageBuffer)
-    
+
     // MARK: - State Events
-    
+
     /// Called when the decoder state changes
     ///
     /// This provides visibility into the decoder's state machine for
@@ -121,7 +121,7 @@ public protocol DecoderDelegate: AnyObject {
     ///
     /// - Parameter state: The new decoder state
     func didChangeState(_ state: DecoderState)
-    
+
     /// Called when an error occurs during decoding
     ///
     /// Errors during decoding are non-fatal state transitions, not exceptions.
@@ -129,9 +129,9 @@ public protocol DecoderDelegate: AnyObject {
     ///
     /// - Parameter error: Description of the error
     func didEncounterError(_ error: DecoderError)
-    
+
     // MARK: - Diagnostic Events (Optional)
-    
+
     /// Called with diagnostic information during decoding
     ///
     /// This is intended for debugging and development. In production,
@@ -176,7 +176,7 @@ public struct DiagnosticInfo: Sendable {
         case warning
         case error
     }
-    
+
     /// Category of the diagnostic
     public enum Category: Sendable {
         case sync
@@ -185,19 +185,19 @@ public struct DiagnosticInfo: Sendable {
         case timing
         case general
     }
-    
+
     /// Diagnostic severity
     public let level: Level
-    
+
     /// Diagnostic category
     public let category: Category
-    
+
     /// Human-readable message
     public let message: String
-    
+
     /// Optional key-value data
     public let data: [String: String]
-    
+
     /// Timestamp when diagnostic was created
     ///
     /// Note: The timestamp is for display and logging purposes only.
@@ -205,7 +205,7 @@ public struct DiagnosticInfo: Sendable {
     /// or stored in sets/dictionaries. Each diagnostic emission creates a
     /// new instance with a unique timestamp.
     public let timestamp: Date
-    
+
     public init(
         level: Level,
         category: Category,
@@ -251,29 +251,29 @@ public struct DiagnosticInfo: Sendable {
 public enum DecoderState: Equatable, Sendable {
     /// Decoder is idle, waiting for samples
     case idle
-    
+
     /// Searching for VIS code to identify SSTV mode
     case detectingVIS
-    
+
     /// Searching for sync pattern to begin image decode
     case searchingSync
-    
+
     /// Successfully locked onto sync pattern
     case syncLocked(confidence: Float)
-    
+
     /// Actively decoding image lines
     case decoding(line: Int, totalLines: Int)
-    
+
     /// Sync was lost during decoding
     /// Contains the line number where sync was lost
     case syncLost(atLine: Int)
-    
+
     /// Image decode complete
     case complete
-    
+
     /// Decoder encountered an unrecoverable error
     case error(DecoderError)
-    
+
     /// Human-readable description of the current state
     public var description: String {
         switch self {
@@ -295,7 +295,7 @@ public enum DecoderState: Equatable, Sendable {
             return "Error: \(error.description)"
         }
     }
-    
+
     /// Whether the decoder is in an active (non-terminal) state
     public var isActive: Bool {
         switch self {
@@ -305,7 +305,7 @@ public enum DecoderState: Equatable, Sendable {
             return true
         }
     }
-    
+
     /// Whether the decoder has finished (successfully or with error)
     public var isTerminal: Bool {
         switch self {
@@ -326,22 +326,22 @@ public enum DecoderState: Equatable, Sendable {
 public enum DecoderError: Error, Equatable, Sendable {
     /// No sync pattern found in the signal
     case syncNotFound
-    
+
     /// Sync was lost during decoding
     case syncLost(atLine: Int)
-    
+
     /// End of samples reached before image complete
     case endOfStream(linesDecoded: Int, totalLines: Int)
-    
+
     /// Unknown or unsupported SSTV mode
     case unknownMode(String)
-    
+
     /// Invalid sample rate for SSTV decoding
     case invalidSampleRate(Double)
-    
+
     /// Insufficient samples for decoding
     case insufficientSamples
-    
+
     /// Human-readable description
     public var description: String {
         switch self {

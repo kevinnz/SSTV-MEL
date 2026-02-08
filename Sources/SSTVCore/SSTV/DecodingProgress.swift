@@ -9,7 +9,7 @@ public struct DecodingProgress {
         case signalSearch
         case frameDecoding(linesDecoded: Int, totalLines: Int)
         case writing
-        
+
         /// User-friendly description of the phase
         public var description: String {
             switch self {
@@ -26,27 +26,27 @@ public struct DecodingProgress {
             }
         }
     }
-    
+
     /// Current decoding phase
     public let phase: Phase
-    
+
     /// Overall progress (0.0...1.0)
     public let overallProgress: Double
-    
+
     /// Elapsed time since decoding started
     public let elapsedSeconds: Double
-    
+
     /// Estimated time remaining (nil if unknown)
     public let estimatedSecondsRemaining: Double?
-    
+
     /// Detected mode name (nil if not yet detected)
     public let modeName: String?
-    
+
     /// Percentage complete (0...100)
     public var percentComplete: Double {
         overallProgress * 100
     }
-    
+
     /// Create a progress update
     ///
     /// - Parameters:

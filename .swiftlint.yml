@@ -1,0 +1,93 @@
+# SwiftLint Configuration for SSTV-MEL
+# https://github.com/realm/SwiftLint
+#
+# This config enforces the project's style conventions documented in:
+#   - .github/copilot/copilot-swift-style.md
+#   - CONTRIBUTING.md
+
+# ─── Paths ───────────────────────────────────────────────────────────
+
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - .venv
+
+# ─── Rule Configuration ─────────────────────────────────────────────
+
+# Line length: allow longer lines for doc comments and URLs.
+# Code lines warn at 140, error at 200.
+line_length:
+  warning: 140
+  error: 200
+  ignores_comments: true
+  ignores_urls: true
+  ignores_interpolated_strings: true
+
+# Type name length: allow short names like "FM" (domain abbreviation)
+type_name:
+  min_length: 2
+  max_length: 50
+
+# Identifier name length: allow short names (i, r, g, b, x, y common in DSP)
+identifier_name:
+  min_length: 1
+  max_length: 60
+  excluded:
+    - id
+
+# Function body length: DSP decode functions and CLI entry can be long
+function_body_length:
+  warning: 80
+  error: 200
+
+# Cyclomatic complexity: CLI argument parsing is inherently branchy
+cyclomatic_complexity:
+  warning: 15
+  error: 45
+
+# Type body length: mode structs contain full decode logic
+type_body_length:
+  warning: 400
+  error: 600
+
+# File length: allow larger files for mode implementations
+file_length:
+  warning: 600
+  error: 1000
+
+# Large tuples: allow 3-member tuples for (R, G, B) pixel values
+large_tuple:
+  warning: 3
+  error: 4
+
+# Nesting: keep reasonable limits
+nesting:
+  type_level: 2
+  function_level: 5
+
+# ─── Opt-in Rules ───────────────────────────────────────────────────
+
+opt_in_rules:
+  - fatal_error_message         # fatalError must include a message
+  - force_unwrapping            # No force unwraps (project convention)
+  - implicitly_unwrapped_optional  # Discourage implicitly unwrapped optionals
+  - empty_count                 # Prefer .isEmpty over .count == 0
+  - closure_spacing             # Consistent closure formatting
+  - contains_over_first_not_nil # Prefer contains() over first != nil
+  - discouraged_optional_boolean # Avoid Bool? ambiguity
+  - empty_string                # Prefer .isEmpty over == ""
+  - modifier_order              # Consistent modifier ordering
+  - overridden_super_call       # Always call super in overrides
+  - redundant_nil_coalescing    # Remove redundant ?? nil
+  - toggle_bool                 # Prefer .toggle() over x = !x
+  - yoda_condition              # Avoid Yoda conditions (0 == x)
+
+# ─── Disabled Rules ─────────────────────────────────────────────────
+
+disabled_rules:
+  - todo                        # Allow TODO/FIXME comments during development
+  - trailing_comma              # Personal preference — allow trailing commas
+  - for_where                   # Project prefers explicit if-inside-for style

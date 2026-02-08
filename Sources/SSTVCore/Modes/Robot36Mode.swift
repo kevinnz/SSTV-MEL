@@ -31,72 +31,72 @@
 /// - SSTV Handbook
 /// - JL Barber N7CXI SSTV specification
 struct Robot36Mode: SSTVMode {
-    
+
     // MARK: - Mode Identification
-    
+
     /// VIS code for Robot36 mode (8 decimal = 0x08)
     let visCode: UInt8 = 0x08
-    
+
     /// Human-readable name
     let name: String = "Robot36"
-    
+
     // MARK: - Image Dimensions
-    
+
     /// Image width in pixels
     let width: Int = 320
-    
+
     /// Image height in pixels (number of lines)
     let height: Int = 240
-    
+
     // MARK: - Timing Constants (in milliseconds)
-    
+
     /// Number of image lines per transmission frame
     /// Robot36 transmits one even line (Y + R-Y) and one odd line (Y + B-Y) per frame
     let linesPerFrame: Int = 2
-    
+
     /// Duration of one line (sync + porch + Y + separator + chroma porch + chroma)
     /// 9.0 + 3.0 + 88.0 + 4.5 + 1.5 + 44.0 = 150.0ms
     let lineDurationMs: Double = 150.0
-    
+
     /// Total duration of one transmission frame (contains 2 image lines)
     /// 150.0ms × 2 = 300.0ms
     var frameDurationMs: Double { lineDurationMs * Double(linesPerFrame) }
-    
+
     /// Duration of sync pulse at start of each line (in ms)
     let syncPulseMs: Double = 9.0
-    
+
     /// Duration of sync porch after sync pulse (in ms)
     let syncPorchMs: Double = 3.0
-    
+
     /// Duration of Y (luminance) scan (in ms)
     let yDurationMs: Double = 88.0
-    
+
     /// Duration of separator before chrominance (in ms)
     let separatorMs: Double = 4.5
-    
+
     /// Duration of chroma porch (in ms)
     let chromaPorchMs: Double = 1.5
-    
+
     /// Duration of chrominance scan (R-Y or B-Y) (in ms)
     let chromaDurationMs: Double = 44.0
-    
+
     // MARK: - Frequency Constants (in Hz)
-    
+
     /// Sync pulse frequency (in Hz)
     let syncFrequencyHz: Double = 1200.0
-    
+
     /// Black level frequency (in Hz)
     let blackFrequencyHz: Double = 1500.0
-    
+
     /// White level frequency (in Hz)
     let whiteFrequencyHz: Double = 2300.0
-    
+
     /// Chrominance zero reference frequency (in Hz)
     /// This is the neutral point for chrominance encoding
     let chromaZeroFrequencyHz: Double = 1900.0
-    
+
     // MARK: - Derived Values
-    
+
     /// Frequency range for pixel values (white - black)
     var frequencyRangeHz: Double {
         whiteFrequencyHz - blackFrequencyHz
@@ -106,7 +106,7 @@ struct Robot36Mode: SSTVMode {
 // MARK: - Frame Decoding
 
 extension Robot36Mode {
-    
+
     /// Decode a Robot36 frame from frequency data using TIME-BASED decoding.
     ///
     /// Robot36 transmits TWO image lines per frame:
@@ -139,19 +139,19 @@ extension Robot36Mode {
     ) -> [[Double]] {
         let samplesPerSecond = sampleRate
         let msToSamples = samplesPerSecond / 1000.0
-        
+
         // Calculate phase/skew offset for each line in this frame
         // Frame contains 2 lines: even line (frameIndex * 2) and odd line (frameIndex * 2 + 1)
         let line0Index = frameIndex * linesPerFrame
         let line1Index = line0Index + 1
-        
+
         // Get sample offsets for each line (phase + accumulated skew)
         let line0SampleOffset = options.sampleOffset(forLine: line0Index, sampleRate: sampleRate)
         let line1SampleOffset = options.sampleOffset(forLine: line1Index, sampleRate: sampleRate)
-        
+
         // For shared chrominance, use average of the two line offsets
         let chromaSampleOffset = (line0SampleOffset + line1SampleOffset) / 2.0
-        
+
         // ==========================================================
         // EVEN LINE (line 0): Sync + Porch + Y0 + Sep + ChromaPorch + R-Y
         // ==========================================================
@@ -164,7 +164,7 @@ extension Robot36Mode {
         let evenChromaPorchEndMs = evenSeparatorEndMs + chromaPorchMs
         let evenCrStartMs = evenChromaPorchEndMs  // R-Y (Cr)
         let evenCrEndMs = evenCrStartMs + chromaDurationMs
-        
+
         // ==========================================================
         // ODD LINE (line 1): Sync + Porch + Y1 + Sep + ChromaPorch + B-Y
         // ==========================================================
@@ -177,24 +177,24 @@ extension Robot36Mode {
         let oddChromaPorchEndMs = oddSeparatorEndMs + chromaPorchMs
         let oddCbStartMs = oddChromaPorchEndMs  // B-Y (Cb)
         let oddCbEndMs = oddCbStartMs + chromaDurationMs
-        
+
         // Convert to sample positions with line-specific offsets
         // Y0 (even line luminance)
         let y0StartSample = evenY0StartMs * msToSamples + line0SampleOffset
         let y0EndSample = evenY0EndMs * msToSamples + line0SampleOffset
-        
+
         // Cr (R-Y) from even line - uses averaged chroma offset
         let crStartSample = evenCrStartMs * msToSamples + chromaSampleOffset
         let crEndSample = evenCrEndMs * msToSamples + chromaSampleOffset
-        
+
         // Y1 (odd line luminance)
         let y1StartSample = oddY1StartMs * msToSamples + line1SampleOffset
         let y1EndSample = oddY1EndMs * msToSamples + line1SampleOffset
-        
+
         // Cb (B-Y) from odd line - uses averaged chroma offset
         let cbStartSample = oddCbStartMs * msToSamples + chromaSampleOffset
         let cbEndSample = oddCbEndMs * msToSamples + chromaSampleOffset
-        
+
         // Decode all components
         let y0Values = decodeComponentTimeBased(
             frequencies: frequencies,
@@ -202,32 +202,32 @@ extension Robot36Mode {
             endSample: y0EndSample,
             pixelCount: width
         )
-        
+
         let y1Values = decodeComponentTimeBased(
             frequencies: frequencies,
             startSample: y1StartSample,
             endSample: y1EndSample,
             pixelCount: width
         )
-        
+
         let crValues = decodeChromaComponentTimeBased(
             frequencies: frequencies,
             startSample: crStartSample,
             endSample: crEndSample,
             pixelCount: width
         )
-        
+
         let cbValues = decodeChromaComponentTimeBased(
             frequencies: frequencies,
             startSample: cbStartSample,
             endSample: cbEndSample,
             pixelCount: width
         )
-        
+
         // Convert to RGB for both lines
         var line0 = [Double](repeating: 0.0, count: width * 3)
         var line1 = [Double](repeating: 0.0, count: width * 3)
-        
+
         for i in 0..<width {
             // Line 0 (even) uses Y0
             let (r0, g0, b0) = ycbcrToRGB(
@@ -238,7 +238,7 @@ extension Robot36Mode {
             line0[i * 3] = r0
             line0[i * 3 + 1] = g0
             line0[i * 3 + 2] = b0
-            
+
             // Line 1 (odd) uses Y1
             let (r1, g1, b1) = ycbcrToRGB(
                 y: y1Values[i],
@@ -249,11 +249,11 @@ extension Robot36Mode {
             line1[i * 3 + 1] = g1
             line1[i * 3 + 2] = b1
         }
-        
+
         // Return lines in order: even, odd
         return [line0, line1]
     }
-    
+
     /// Legacy single-line decode for compatibility
     /// For Robot36, use decodeFrame() instead
     func decodeLine(
@@ -268,7 +268,7 @@ extension Robot36Mode {
         )
         return lineIndex % 2 == 0 ? frame[0] : frame[1]
     }
-    
+
     /// Decode a luminance component (Y) using TIME-BASED fractional sample indexing.
     ///
     /// Maps frequency range [blackFrequencyHz...whiteFrequencyHz] to [0.0...1.0]
@@ -287,41 +287,41 @@ extension Robot36Mode {
         pixelCount: Int
     ) -> [Double] {
         var values = [Double](repeating: 0.0, count: pixelCount)
-        
+
         let componentDurationSamples = endSample - startSample
         let samplesPerPixel = componentDurationSamples / Double(pixelCount)
-        
+
         for pixelIndex in 0..<pixelCount {
             // Calculate the EXACT fractional sample position for this pixel's CENTER
             let pixelCenterPosition = startSample + (Double(pixelIndex) + 0.5) * samplesPerPixel
-            
+
             // Clamp position strictly within the frequency array bounds
             let clampedPosition = min(max(pixelCenterPosition, 0.0), Double(frequencies.count - 1))
-            
+
             // Perform linear interpolation between adjacent samples
             let lowerIndex = Int(clampedPosition)
             let upperIndex = min(lowerIndex + 1, frequencies.count - 1)
             let fraction = clampedPosition - Double(lowerIndex)
-            
+
             // Bounds check
             guard lowerIndex >= 0 && lowerIndex < frequencies.count &&
                   upperIndex >= 0 && upperIndex < frequencies.count else {
                 values[pixelIndex] = 0.5
                 continue
             }
-            
+
             // Linear interpolation
             let lowerFreq = frequencies[lowerIndex]
             let upperFreq = frequencies[upperIndex]
             let interpolatedFreq = lowerFreq * (1.0 - fraction) + upperFreq * fraction
-            
+
             // Map frequency to luminance value
             values[pixelIndex] = frequencyToLuminance(interpolatedFreq)
         }
-        
+
         return values
     }
-    
+
     /// Decode a chrominance component (Cb or Cr) using TIME-BASED fractional sample indexing.
     ///
     /// Chrominance is centered around 1900 Hz (neutral), with the range [1500...2300] Hz
@@ -341,35 +341,35 @@ extension Robot36Mode {
         pixelCount: Int
     ) -> [Double] {
         var values = [Double](repeating: 0.5, count: pixelCount)
-        
+
         let componentDurationSamples = endSample - startSample
         let samplesPerPixel = componentDurationSamples / Double(pixelCount)
-        
+
         for pixelIndex in 0..<pixelCount {
             let pixelCenterPosition = startSample + (Double(pixelIndex) + 0.5) * samplesPerPixel
             let clampedPosition = min(max(pixelCenterPosition, 0.0), Double(frequencies.count - 1))
-            
+
             let lowerIndex = Int(clampedPosition)
             let upperIndex = min(lowerIndex + 1, frequencies.count - 1)
             let fraction = clampedPosition - Double(lowerIndex)
-            
+
             guard lowerIndex >= 0 && lowerIndex < frequencies.count &&
                   upperIndex >= 0 && upperIndex < frequencies.count else {
                 values[pixelIndex] = 0.5
                 continue
             }
-            
+
             let lowerFreq = frequencies[lowerIndex]
             let upperFreq = frequencies[upperIndex]
             let interpolatedFreq = lowerFreq * (1.0 - fraction) + upperFreq * fraction
-            
+
             // Map frequency to chrominance value
             values[pixelIndex] = frequencyToChroma(interpolatedFreq)
         }
-        
+
         return values
     }
-    
+
     /// Convert a detected frequency to a normalized luminance value.
     ///
     /// Maps the frequency range [blackFrequencyHz...whiteFrequencyHz]
@@ -381,7 +381,7 @@ extension Robot36Mode {
         let normalized = (frequency - blackFrequencyHz) / frequencyRangeHz
         return min(max(normalized, 0.0), 1.0)
     }
-    
+
     /// Convert a detected frequency to a normalized chrominance value.
     ///
     /// Robot36 uses chromaZeroFrequencyHz (1900 Hz) as the zero reference for chrominance.
@@ -399,7 +399,7 @@ extension Robot36Mode {
         let normalized = (frequency - blackFrequencyHz) / frequencyRangeHz
         return min(max(normalized, 0.0), 1.0)
     }
-    
+
     /// Convert YCbCr color values to RGB.
     ///
     /// Uses ITU-R BT.601 conversion matrix commonly used in SSTV.
@@ -414,12 +414,12 @@ extension Robot36Mode {
         // Center Cb and Cr around 0.5
         let cbCentered = cb - 0.5
         let crCentered = cr - 0.5
-        
+
         // ITU-R BT.601 conversion
         let r = y + 1.402 * crCentered
         let g = y - 0.344136 * cbCentered - 0.714136 * crCentered
         let b = y + 1.772 * cbCentered
-        
+
         // Clamp to valid range
         return (
             r: min(max(r, 0.0), 1.0),

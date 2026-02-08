@@ -42,7 +42,7 @@ This repo is already in strong shape — MIT license, zero external dependencies
 
 16. ~~**Add PD180 unit tests**~~ — **DONE.** Created `Tests/sstvTests/PD180ModeTests.swift` with 10 tests: mode constants, PD180 vs PD120 timing comparison, `lineDurationMs` computed property, `decodeFrame` with mid-gray and black luminance synthetic data, `decodeLine` legacy interface, line-from-frame selection, multi-frame state independence, `DecodingOptions` integration, and `ImageBuffer` integration. All 10 tests pass. All 3 modes (PD120, PD180, Robot36) now have dedicated test files.
 
-17. **Consider SwiftLint** — No linting config exists, though the code is already clean. A `.swiftlint.yml` would enforce consistency for future contributors.
+17. ~~**Consider SwiftLint**~~ — **DONE.** Created `.swiftlint.yml` with rules matching project conventions. Auto-fixed 1003 trailing whitespace violations across all 23 Swift files. Config includes: relaxed `identifier_name` (min 1 for DSP vars r/g/b/x/y), relaxed `function_body_length` (200), `cyclomatic_complexity` (45), `file_length` (1000), `large_tuple` (3 for RGB), `line_length` ignores comments. Opt-in rules: `force_unwrapping`, `fatal_error_message`, `empty_count`, `closure_spacing`, etc. Disabled: `todo`, `trailing_comma`, `for_where`. Result: 0 errors, 8 acceptable warnings.
 
 ## Verification
 
@@ -56,9 +56,9 @@ This repo is already in strong shape — MIT license, zero external dependencies
 
 **All 4 critical steps complete.** The repo has no blockers for open source release.
 Steps 5–12 (recommended): **all done.**
-Steps 13–17 (optional): steps 13, 14, 15, and 16 done; step 17 (SwiftLint) not yet started.
+Steps 13–17 (optional): **all done.**
 
-The repo is **ready for open source** from a code/security/licensing/documentation/testing perspective. All critical and recommended steps are complete. 16 of 17 steps done. The only remaining step is SwiftLint (step 17), which is purely optional.
+The repo is **ready for open source**. All 17 steps complete — code, security, licensing, documentation, testing, and tooling are all in place.
 
 **To publish:** `git push --force-with-lease && git push --tags` (force-push needed due to LFS history rewrite from step 2).
 

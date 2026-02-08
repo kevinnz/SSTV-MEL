@@ -40,15 +40,15 @@
 /// let buffer = try decoder.decode(audio: audio, options: options)
 /// ```
 public struct DecodingOptions {
-    
+
     // MARK: - Limits
-    
+
     /// Maximum allowed phase offset in milliseconds (±50ms, ~half a line)
     public static let maxPhaseOffsetMs: Double = 50.0
-    
+
     /// Maximum allowed skew in milliseconds per line (±1.0ms/line)
     public static let maxSkewMsPerLine: Double = 1.0
-    
+
     /// Default sync recovery threshold (as a fraction of total image lines)
     ///
     /// When sync is lost during decoding, the decoder will attempt recovery if
@@ -57,9 +57,9 @@ public struct DecodingOptions {
     ///
     /// Default: 0.5 (50% - recover if sync lost in first half, error in second half)
     public static let defaultSyncRecoveryThreshold: Double = 0.5
-    
+
     // MARK: - Phase Adjustment
-    
+
     /// Horizontal phase offset in milliseconds.
     ///
     /// Shifts the entire image horizontally to correct for sync timing errors.
@@ -73,9 +73,9 @@ public struct DecodingOptions {
             phaseOffsetMs = Self.clampPhase(phaseOffsetMs)
         }
     }
-    
+
     // MARK: - Skew Adjustment
-    
+
     /// Skew correction in milliseconds per line.
     ///
     /// Compensates for timing drift that accumulates over the image height,
@@ -92,9 +92,9 @@ public struct DecodingOptions {
             skewMsPerLine = Self.clampSkew(skewMsPerLine)
         }
     }
-    
+
     // MARK: - Sync Recovery
-    
+
     /// Sync recovery threshold (fraction of total image lines).
     ///
     /// When sync is lost during decoding, the decoder will:
@@ -111,21 +111,20 @@ public struct DecodingOptions {
         }
     }
 
-    
     // MARK: - Clamping Helpers
-    
+
     /// Clamp phase offset to valid range
     private static func clampPhase(_ value: Double) -> Double {
         return min(max(value, -maxPhaseOffsetMs), maxPhaseOffsetMs)
     }
-    
+
     /// Clamp skew to valid range
     private static func clampSkew(_ value: Double) -> Double {
         return min(max(value, -maxSkewMsPerLine), maxSkewMsPerLine)
     }
-    
+
     // MARK: - Initialization
-    
+
     /// Create decoding options with specified adjustments.
     ///
     /// Values are automatically clamped to valid ranges:
@@ -145,12 +144,12 @@ public struct DecodingOptions {
         self.skewMsPerLine = skewMsPerLine
         self.syncRecoveryThreshold = min(max(syncRecoveryThreshold, 0.0), 1.0)
     }
-    
+
     /// Default options with no adjustments
     public static let `default` = DecodingOptions()
-    
+
     // MARK: - Computed Properties
-    
+
     /// Calculate the total phase offset for a specific line.
     ///
     /// - Parameter lineIndex: The 0-based line index
@@ -158,7 +157,7 @@ public struct DecodingOptions {
     public func totalPhaseOffsetMs(forLine lineIndex: Int) -> Double {
         return phaseOffsetMs + (Double(lineIndex) * skewMsPerLine)
     }
-    
+
     /// Convert phase offset to sample offset for a given sample rate.
     ///
     /// - Parameters:
@@ -176,19 +175,19 @@ public struct DecodingOptions {
 extension DecodingOptions: CustomStringConvertible {
     public var description: String {
         var parts: [String] = []
-        
+
         if phaseOffsetMs != 0.0 {
             parts.append(String(format: "phase: %.2fms", phaseOffsetMs))
         }
-        
+
         if skewMsPerLine != 0.0 {
             parts.append(String(format: "skew: %.4fms/line", skewMsPerLine))
         }
-        
+
         if parts.isEmpty {
             return "DecodingOptions(default)"
         }
-        
+
         return "DecodingOptions(\(parts.joined(separator: ", ")))"
     }
 }

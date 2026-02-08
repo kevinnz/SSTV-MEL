@@ -22,34 +22,34 @@ import Foundation
 public protocol SSTVModeParameters: Sendable {
     /// VIS code identifying this mode
     var visCode: UInt8 { get }
-    
+
     /// Human-readable mode name
     var name: String { get }
-    
+
     /// Image width in pixels
     var width: Int { get }
-    
+
     /// Image height in pixels
     var height: Int { get }
-    
+
     /// Number of image lines per transmission frame
     var linesPerFrame: Int { get }
-    
+
     /// Total duration of one transmission frame in milliseconds
     var frameDurationMs: Double { get }
-    
+
     /// Duration of sync pulse in milliseconds
     var syncPulseMs: Double { get }
-    
+
     /// Duration of porch after sync pulse in milliseconds
     var porchMs: Double { get }
-    
+
     /// Sync pulse frequency in Hz
     var syncFrequencyHz: Double { get }
-    
+
     /// Black level frequency in Hz
     var blackFrequencyHz: Double { get }
-    
+
     /// White level frequency in Hz
     var whiteFrequencyHz: Double { get }
 }
@@ -65,59 +65,59 @@ public protocol SSTVModeParameters: Sendable {
 ///
 /// All timing values are in milliseconds unless otherwise noted.
 public struct PD120Parameters: SSTVModeParameters, Sendable {
-    
+
     // MARK: - Identification
-    
+
     public let visCode: UInt8 = 0x5F  // 95 decimal
     public let name: String = "PD120"
-    
+
     // MARK: - Image Dimensions
-    
+
     public let width: Int = 640
     public let height: Int = 496
     public let linesPerFrame: Int = 2
-    
+
     // MARK: - Timing (milliseconds)
-    
+
     /// Total frame duration (contains 2 image lines)
     /// Per PD120 specification: 508.48ms per frame
     public let frameDurationMs: Double
-    
+
     /// Sync pulse duration
     public let syncPulseMs: Double
-    
+
     /// Porch duration after sync
     public let porchMs: Double
-    
+
     /// Y component duration (one per image line)
     public let yDurationMs: Double
-    
+
     /// Cb (B-Y, blue chrominance) duration
     public let cbDurationMs: Double
-    
+
     /// Cr (R-Y, red chrominance) duration
     public let crDurationMs: Double
-    
+
     // MARK: - Frequencies (Hz)
-    
+
     public let syncFrequencyHz: Double
     public let blackFrequencyHz: Double
     public let whiteFrequencyHz: Double
-    
+
     // MARK: - Derived
-    
+
     /// Frequency range for pixel values (white - black)
     public var frequencyRangeHz: Double {
         whiteFrequencyHz - blackFrequencyHz
     }
-    
+
     /// Duration of one image line in milliseconds
     public var lineDurationMs: Double {
         frameDurationMs / Double(linesPerFrame)
     }
-    
+
     // MARK: - Initialization
-    
+
     /// Create PD120 parameters with default timing values
     public init() {
         self.frameDurationMs = 508.48
@@ -130,7 +130,7 @@ public struct PD120Parameters: SSTVModeParameters, Sendable {
         self.blackFrequencyHz = 1500.0
         self.whiteFrequencyHz = 2300.0
     }
-    
+
     /// Create PD120 parameters with custom timing values
     ///
     /// Use this for fine-tuning or experimentation.
@@ -180,59 +180,59 @@ public struct PD120Parameters: SSTVModeParameters, Sendable {
 /// PD180 has longer component durations than PD120, resulting in
 /// higher quality images at the cost of longer transmission time.
 public struct PD180Parameters: SSTVModeParameters, Sendable {
-    
+
     // MARK: - Identification
-    
+
     public let visCode: UInt8 = 0x60  // 96 decimal
     public let name: String = "PD180"
-    
+
     // MARK: - Image Dimensions
-    
+
     public let width: Int = 640
     public let height: Int = 496
     public let linesPerFrame: Int = 2
-    
+
     // MARK: - Timing (milliseconds)
-    
+
     /// Total frame duration (contains 2 image lines)
     /// QSSTV: 187.06450 seconds / 248 frames = 754.29ms
     public let frameDurationMs: Double
-    
+
     /// Sync pulse duration
     public let syncPulseMs: Double
-    
+
     /// Porch/back porch duration after sync
     public let porchMs: Double
-    
+
     /// Y component duration (one per image line)
     public let yDurationMs: Double
-    
+
     /// Cb (B-Y, blue chrominance) duration
     public let cbDurationMs: Double
-    
+
     /// Cr (R-Y, red chrominance) duration
     public let crDurationMs: Double
-    
+
     // MARK: - Frequencies (Hz)
-    
+
     public let syncFrequencyHz: Double
     public let blackFrequencyHz: Double
     public let whiteFrequencyHz: Double
-    
+
     // MARK: - Derived
-    
+
     /// Frequency range for pixel values (white - black)
     public var frequencyRangeHz: Double {
         whiteFrequencyHz - blackFrequencyHz
     }
-    
+
     /// Duration of one image line in milliseconds
     public var lineDurationMs: Double {
         frameDurationMs / Double(linesPerFrame)
     }
-    
+
     // MARK: - Initialization
-    
+
     /// Create PD180 parameters with default timing values
     public init() {
         self.frameDurationMs = 754.29
@@ -245,7 +245,7 @@ public struct PD180Parameters: SSTVModeParameters, Sendable {
         self.blackFrequencyHz = 1500.0
         self.whiteFrequencyHz = 2300.0
     }
-    
+
     /// Create PD180 parameters with custom timing values
     ///
     /// Use this for fine-tuning or experimentation.
@@ -280,10 +280,10 @@ public struct PD180Parameters: SSTVModeParameters, Sendable {
 public enum SSTVModeSelection: Sendable {
     /// PD120 mode with optional custom parameters
     case pd120(PD120Parameters = PD120Parameters())
-    
+
     /// PD180 mode with optional custom parameters
     case pd180(PD180Parameters = PD180Parameters())
-    
+
     /// Get the parameters for this mode selection
     ///
     /// Note: This property returns an existential type (`any SSTVModeParameters`)
@@ -296,7 +296,7 @@ public enum SSTVModeSelection: Sendable {
         case .pd180(let params): return params
         }
     }
-    
+
     /// Get the mode name
     public var name: String {
         switch self {
@@ -304,7 +304,7 @@ public enum SSTVModeSelection: Sendable {
         case .pd180: return "PD180"
         }
     }
-    
+
     /// Get the VIS code for this mode
     public var visCode: UInt8 {
         switch self {
@@ -312,7 +312,7 @@ public enum SSTVModeSelection: Sendable {
         case .pd180(let params): return params.visCode
         }
     }
-    
+
     /// Create mode selection from VIS code
     ///
     /// - Parameter visCode: VIS code value
@@ -324,7 +324,7 @@ public enum SSTVModeSelection: Sendable {
         default: return nil
         }
     }
-    
+
     /// Create mode selection from mode name
     ///
     /// - Parameter name: Mode name (case-insensitive)

@@ -10,14 +10,14 @@ import Foundation
 /// - 8 data bits (1100 Hz = 0, 1300 Hz = 1, ~30ms each)
 /// - Stop bit (1200 Hz, ~30ms)
 struct VISDetector {
-    
+
     /// VIS code detection result
     struct VISResult {
         let code: UInt8
         let mode: String
         let startSample: Int
     }
-    
+
     /// Known SSTV modes and their VIS codes
     static let knownModes: [UInt8: String] = [
         0x60: "PD180",  // 96 decimal
@@ -27,7 +27,7 @@ struct VISDetector {
         0x62: "PD160",  // 98 decimal
         0x08: "Robot36"
     ]
-    
+
     /// Detect VIS code in audio signal
     ///
     /// - Parameters:
@@ -44,11 +44,11 @@ struct VISDetector {
         let leaderFreq = 1900.0
         let leaderDurationMs = 300.0
         let leaderSamples = Int(leaderDurationMs * sampleRate / 1000.0)
-        
+
         // Search through signal for leader tone
         let windowSize = 512
         let stepSize = 256
-        
+
         let tracker = FrequencyTracker(
             sampleRate: sampleRate,
             windowSize: windowSize,
@@ -57,44 +57,44 @@ struct VISDetector {
             maxFrequency: 2000.0,
             binCount: 64
         )
-        
+
         // Track first ~30 seconds (VIS might be later in the file)
         let searchSamples = min(samples.count, Int(30.0 * sampleRate))
-        
+
         // Report initial progress
         progressHandler?(0.0)
-        
+
         let searchFreqs = tracker.track(samples: Array(samples[0..<searchSamples]))
-        
+
         // Report progress after tracking
         progressHandler?(0.5)
-        
+
         // Look for sustained 1900 Hz tone
         let tolerance = 100.0 // Increased tolerance
         var leaderStart = -1
         var consecutiveLeader = 0
         let requiredLeaderSteps = leaderSamples / stepSize
-        
+
         var attemptCount = 0
-        
+
         for (index, freq) in searchFreqs.enumerated() {
             // Report progress periodically
             if index % 1000 == 0 {
                 let progress = 0.5 + (Double(index) / Double(searchFreqs.count) * 0.5)
                 progressHandler?(progress)
             }
-            
+
             if abs(freq - leaderFreq) < tolerance {
                 if leaderStart == -1 {
                     leaderStart = index
                 }
                 consecutiveLeader += 1
-                
+
                 if consecutiveLeader >= requiredLeaderSteps {
                     // Found leader tone, now look for VIS bits after it
                     let visStartStep = index + 1
                     attemptCount += 1
-                    
+
                     if let code = decodeVISBits(
                         frequencies: searchFreqs,
                         startStep: visStartStep,
@@ -116,11 +116,11 @@ struct VISDetector {
                 consecutiveLeader = 0
             }
         }
-        
+
         progressHandler?(1.0)
         return nil
     }
-    
+
     /// Decode VIS data bits
     ///
     /// - Parameters:
@@ -137,27 +137,27 @@ struct VISDetector {
     ) -> UInt8? {
         let bitDurationMs = 30.0
         let stepsPerBit = Int(bitDurationMs * sampleRate / 1000.0) / stepSize
-        
+
         let freq0 = 1100.0 // Binary 0
         let freq1 = 1300.0 // Binary 1
         let tolerance = 50.0
-        
+
         var bits: [Bool] = []
         var currentStep = startStep
-        
+
         // Skip break and start bit (both 1200 Hz)
         currentStep += stepsPerBit * 2
-        
+
         // Read 8 data bits
         for _ in 0..<8 {
             guard currentStep + stepsPerBit <= frequencies.count else {
                 return nil
             }
-            
+
             // Average frequency over bit duration
             let bitFreqs = frequencies[currentStep..<min(currentStep + stepsPerBit, frequencies.count)]
             let avgFreq = bitFreqs.reduce(0.0, +) / Double(bitFreqs.count)
-            
+
             if abs(avgFreq - freq0) < tolerance {
                 bits.append(false)
             } else if abs(avgFreq - freq1) < tolerance {
@@ -166,10 +166,10 @@ struct VISDetector {
                 // Unclear bit, assume noise
                 return nil
             }
-            
+
             currentStep += stepsPerBit
         }
-        
+
         // Convert bits to byte (LSB first)
         var code: UInt8 = 0
         for (index, bit) in bits.enumerated() {
@@ -177,7 +177,7 @@ struct VISDetector {
                 code |= (1 << index)
             }
         }
-        
+
         return code
     }
 }

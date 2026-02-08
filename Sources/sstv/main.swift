@@ -13,29 +13,29 @@ final class CLIDecoderDelegate: DecoderDelegate {
     private var lastProgressUpdate = Date()
     private let updateInterval: TimeInterval = 1.0
     private var detectedMode: String?
-    
+
     func didBeginVISDetection() {
         print("  Detecting VIS code...")
     }
-    
+
     func didDetectVISCode(_ code: UInt8, mode: String) {
         detectedMode = mode
         print("  VIS code: 0x\(String(format: "%02X", code)) → \(mode)")
     }
-    
+
     func didFailVISDetection() {
         print("  VIS detection failed, defaulting to PD120")
         detectedMode = "PD120"
     }
-    
+
     func didLockSync(confidence: Float) {
         print("  Sync locked (\(Int(confidence * 100))% confidence)")
     }
-    
+
     func didLoseSync() {
         print("\n  ⚠ Sync lost, attempting recovery...")
     }
-    
+
     func didDecodeLine(lineNumber: Int, totalLines: Int) {
         let now = Date()
         if now.timeIntervalSince(lastProgressUpdate) >= updateInterval {
@@ -43,41 +43,41 @@ final class CLIDecoderDelegate: DecoderDelegate {
             printLineProgress(lineNumber: lineNumber, totalLines: totalLines)
         }
     }
-    
+
     func didUpdateProgress(_ progress: Float) {
         // Progress is handled by didDecodeLine for line-level granularity
     }
-    
+
     func didCompleteImage(_ imageBuffer: ImageBuffer) {
         // Clear progress line and print completion
         print("")
     }
-    
+
     func didChangeState(_ state: DecoderState) {
         // State changes are implicit in other events
     }
-    
+
     func didEncounterError(_ error: DecoderError) {
         print("\n  ⚠ Decoder error: \(error.description)")
     }
-    
+
     func didEmitDiagnostic(_ info: DiagnosticInfo) {
         // Diagnostics are not shown in CLI by default
         // Could be enabled with a --verbose flag
     }
-    
+
     private func printLineProgress(lineNumber: Int, totalLines: Int) {
         let elapsed = Date().timeIntervalSince(startTime)
         let progress = Double(lineNumber + 1) / Double(totalLines)
         let estimated = elapsed / progress
         let remaining = estimated - elapsed
-        
+
         let progressBar = makeProgressBar(progress: progress, width: 30)
         let percent = Int(progress * 100)
-        
+
         var status = "\r  \(progressBar) \(percent)% | Decoding: \(lineNumber + 1)/\(totalLines) lines"
         status += " | ETA: \(formatTime(remaining))"
-        
+
         print(status, terminator: "")
         fflush(stdout)
     }
@@ -86,7 +86,7 @@ final class CLIDecoderDelegate: DecoderDelegate {
 /// Command-line SSTV decoder
 func main() {
     let arguments = CommandLine.arguments
-    
+
     // Handle --help and -h flags first
     let hasHelpFlag = arguments.contains("--help") || arguments.contains("-h")
     if hasHelpFlag {
@@ -100,21 +100,21 @@ func main() {
         printUsage()
         exit(0)
     }
-    
+
     // Simple argument parsing
     guard arguments.count >= 2 else {
         printUsage()
         exit(1)
     }
-    
+
     let inputPath = arguments[1]
     var outputPath = "output.png"
-    var forcedMode: String? = nil
+    var forcedMode: String?
     var phaseOffsetMs: Double = 0.0
     var skewMsPerLine: Double = 0.0
-    var formatType: String? = nil  // Track format type separately
+    var formatType: String?  // Track format type separately
     var jpegQuality: Double = 0.9
-    
+
     // Parse optional arguments
     var i = 2
     while i < arguments.count {
@@ -172,7 +172,7 @@ func main() {
             i += 1
         }
     }
-    
+
     // Construct final ImageFormat after all arguments are parsed
     let outputFormat: ImageFormat
     if let formatType = formatType {
@@ -192,7 +192,7 @@ func main() {
             outputFormat = detectedFormat
         }
     }
-    
+
     print("SSTV Decoder")
     print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     print("Input:  \(inputPath)")
@@ -206,13 +206,13 @@ func main() {
     if let mode = forcedMode {
         print("Mode:   \(mode) (forced)")
     }
-    
+
     // Create decoding options (values will be clamped automatically)
     let options = DecodingOptions(
         phaseOffsetMs: phaseOffsetMs,
         skewMsPerLine: skewMsPerLine
     )
-    
+
     // Show phase/skew values and warn if clamped
     if phaseOffsetMs != 0.0 || options.phaseOffsetMs != 0.0 {
         if options.phaseOffsetMs != phaseOffsetMs {
@@ -229,24 +229,24 @@ func main() {
         }
     }
     print("")
-    
+
     do {
         // Read WAV file (file I/O is CLI responsibility, not decoder-core)
         print("Reading audio file...")
         let audio = try WAVReader.read(path: inputPath)
-        
+
         print("Decoding SSTV signal...")
         print("  Sample rate: \(audio.sampleRate) Hz")
         print("  Duration: \(String(format: "%.2f", audio.duration)) seconds")
-        
+
         // Create decoder-core with sample rate
         let decoder = SSTVDecoderCore(sampleRate: audio.sampleRate)
         decoder.options = options
-        
+
         // Set up CLI delegate to receive events
         let delegate = CLIDecoderDelegate()
         decoder.delegate = delegate
-        
+
         // Force mode if specified, otherwise auto-detect via VIS
         if let modeStr = forcedMode {
             if !decoder.setMode(named: modeStr) {
@@ -255,12 +255,12 @@ func main() {
                 exit(1)
             }
         }
-        
+
         // Feed all samples to the decoder (batch mode)
         // In a UI app, you would feed samples incrementally
         let samples = audio.monoSamples.map { Float($0) }
         decoder.processSamples(samples)
-        
+
         // Check result
         let buffer: ImageBuffer
         switch decoder.state {
@@ -270,7 +270,7 @@ func main() {
                 exit(1)
             }
             buffer = decodedBuffer
-            
+
         case .error(let error):
             // Check if we have a partial image
             if let partialBuffer = decoder.imageBuffer, decoder.linesDecoded > 0 {
@@ -281,7 +281,7 @@ func main() {
                 print("  \(error.description)")
                 exit(1)
             }
-            
+
         default:
             // Still need more samples or in unexpected state
             if let partialBuffer = decoder.imageBuffer, decoder.linesDecoded > 0 {
@@ -292,7 +292,7 @@ func main() {
                 exit(1)
             }
         }
-        
+
         // Write image file
         let formatName = switch outputFormat {
         case .png: "PNG"
@@ -300,11 +300,11 @@ func main() {
         }
         print("Writing \(formatName)...")
         try ImageWriter.write(buffer: buffer, to: outputPath, format: outputFormat)
-        
+
         print("")
         print("✓ Successfully decoded SSTV image!")
         print("  Saved to: \(outputPath)")
-        
+
     } catch let error as WAVError {
         print("ERROR: Failed to read WAV file")
         print("  \(error)")
@@ -379,7 +379,7 @@ func formatTime(_ seconds: TimeInterval) -> String {
     let totalSeconds = Int(seconds)
     let minutes = totalSeconds / 60
     let secs = totalSeconds % 60
-    
+
     if minutes > 0 {
         return "\(minutes)m \(secs)s"
     } else {
