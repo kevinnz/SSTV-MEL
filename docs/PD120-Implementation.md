@@ -1,6 +1,23 @@
 # PD120 Line Decoding Implementation
 
-This document describes the PD120 line decoding implementation for the SSTV-MEL decoder.
+> **⚠️ HISTORICAL DOCUMENT — NOT CURRENT**
+>
+> This document was written during initial development and **does not reflect the current implementation**. Key differences:
+>
+> - **VIS code** is `0x5F` (95 decimal), not `0x63` as stated below
+> - **File paths** have changed from `Sources/sstv/...` to `Sources/SSTVCore/...`
+> - **Frame structure** now decodes **2 image lines per frame** (Y0, Cr, Cb, Y1), not single-line as described
+> - **Timing** uses time-based fractional sample decoding with phase/skew correction
+> - **"Missing Stubs"** listed at the bottom are all implemented
+>
+> For current architecture, see:
+> - [ADR-001: PD120/PD180 Decoding Algorithm](adr/adr_001_sstv_pd_120_pd_180_decoding_algorithm.md)
+> - [Sources/SSTVCore/Modes/PD120Mode.swift](../Sources/SSTVCore/Modes/PD120Mode.swift) (authoritative source)
+> - [CONTRIBUTING.md](../CONTRIBUTING.md) for architecture rules
+
+---
+
+This document describes the **original** PD120 line decoding implementation for the SSTV-MEL decoder.
 
 ## Overview
 
