@@ -1,70 +1,29 @@
-# SSTV-MEL Next Steps
+# SSTV-MEL — Next Steps
 
-This document tracks the identified improvements and fixes for the SSTV decoder.
+Known improvements and future work for the SSTV decoder. For the full roadmap, see the [README](../README.md#-roadmap).
 
-## PD120 Decoding Issues
+## Decoding Quality
 
-### 1. Fix VIS code detection for PD120
-- **Status:** Not started
-- **Priority:** High
-- **Description:** VIS code 0x5F is registered in `VISDetector.swift` but is not being detected in PD120 audio files, causing the decoder to default to PD180
-- **Workaround:** Use `--mode PD120` flag to force mode
+- **PD120 VIS detection** — VIS code 0x5F is registered but not always detected; some PD120 files default to PD180. Workaround: use `--mode PD120`.
+- **PD120 horizontal alignment** — Approximately 13ms timing error causes ~68-pixel horizontal offset with reference images. May relate to sync pulse edge detection or missing gap/blank intervals.
+- **PD120 component order** — Verify Y_odd → Cr → Cb → Y_even ordering matches QSSTV output.
+- **Reference image regeneration** — Consider regenerating `expected/` reference images from a known-good decoder for more accurate golden-file testing.
 
-### 2. Investigate ~68-pixel horizontal timing offset
-- **Status:** Not started
-- **Priority:** High
-- **Description:** There's approximately 13ms timing error causing horizontal misalignment with reference images
-- **Possible causes:**
-  - Sync detection finding middle of sync pulse instead of start
-  - Missing gaps/blanks between components
-  - Different timing assumptions than the reference decoder
+## New Modes
 
-### 3. Verify PD120 component order
-- **Status:** Not started
-- **Priority:** Medium
-- **Description:** QSSTV shows Y_odd → Cr → Cb → Y_even order. Need to confirm if line placement in image buffer is correct
+- **Robot72** — Next Robot-family mode to implement (see `Robot36Mode.swift` as reference)
+- **PD50, PD160, PD240** — Additional PD modes following the same pattern as `PD120Mode.swift` / `PD180Mode.swift`
 
-### 4. Re-generate reference images
-- **Status:** Not started
-- **Priority:** Medium
-- **Description:** Consider re-generating expected reference images using this decoder for accurate comparison testing
+## Documentation
 
-## Branch Merges
+- **PD120-Implementation.md** — Contains outdated VIS code (0x63 vs correct 0x5F) and single-line structure instead of 2-lines-per-frame. Needs update to match current implementation.
 
-### 5. ~~Update README to include PD180~~
-- **Status:** ✅ Completed
-- **Description:** GitHub issue #1 - PD180 was missing from README. Now resolved.
+## Future
 
-### 6. Merge PD180 fixes from `fix/pd180-decode-quality` branch
-- **Status:** Not started
-- **Priority:** Medium
-- **Description:** Previous session achieved 0.969 correlation and 0-pixel horizontal shift on PD180. Changes include:
-  - Quadrature FM demodulation (ADR-001 compliant)
-  - FIR low-pass filtering
-  - Time-based decoding with sub-sample precision
-
-### 7. Merge PD120 fixes from `test/pd120-decoding` branch
-- **Status:** Not started
-- **Priority:** High
-- **Description:** Time-based decoding algorithm and vDSP inout parameter fix. Changes include:
-  - Fixed `let omega` → `var omega` for vDSP_vrampD inout parameter
-  - Updated decodeFrame to use time-based algorithm with linear interpolation
-
-## Code Quality
-
-### 8. Run golden file tests
-- **Status:** Not started
-- **Priority:** Medium
-- **Description:** Run `GoldenFileTests.swift` to validate decoder against expected outputs
-
-### 9. Update PD120-Implementation.md documentation
-- **Status:** Not started
-- **Priority:** Low
-- **Description:** Current documentation shows:
-  - Outdated VIS code (0x63 instead of correct 0x5F)
-  - Single-line structure instead of 2-lines-per-frame
-  - Needs update to reflect actual implementation
+- Shared decoder package for macOS/iOS UI
+- Optional live audio input
+- Real-time waterfall display
 
 ---
 
-*Last updated: 26 December 2025*
+Contributions welcome — see [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.

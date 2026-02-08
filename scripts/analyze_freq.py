@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Analyze the actual frequency values detected from the SSTV signal."""
+import os
+import sys
 from PIL import Image
 import numpy as np
+
+# Project root is one level up from this script
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The decoded image uses normalized values (0-255) which came from frequency mapping
 # frequency_normalized = (freq - 1500) / 800 => pixel = normalized * 255
@@ -32,8 +37,11 @@ print(f"  White (2300 Hz) -> decoded=255, expected should be ~{a * 255 + b:.0f}"
 print()
 
 # Load both images and check the darkest and brightest pixels
-decoded = Image.open('/Users/kevin/Documents/GitHub/SSTV-MEL/output_synced.png')
-expected = Image.open('/Users/kevin/Documents/GitHub/SSTV-MEL/expected/Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg')
+decoded_path = sys.argv[1] if len(sys.argv) >= 2 else os.path.join(PROJECT_ROOT, 'output_synced.png')
+expected_path = sys.argv[2] if len(sys.argv) >= 3 else os.path.join(PROJECT_ROOT, 'expected', 'Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg')
+
+decoded = Image.open(decoded_path)
+expected = Image.open(expected_path)
 
 dec_arr = np.array(decoded.convert('RGB'))
 exp_arr = np.array(expected.convert('RGB'))
@@ -102,8 +110,9 @@ print(f"Original mean diff: {diff_original:.1f}")
 print(f"After linear rescale: {diff_corrected:.1f}")
 
 # Save corrected version
-Image.fromarray(corrected).save('/Users/kevin/Documents/GitHub/SSTV-MEL/output_rescaled.png')
-print("Saved rescaled version to output_rescaled.png")
+rescaled_path = os.path.join(PROJECT_ROOT, 'output_rescaled.png')
+Image.fromarray(corrected).save(rescaled_path)
+print(f"Saved rescaled version to {rescaled_path}")
 
 # Try gamma correction
 print("\n=== Testing gamma correction ===")

@@ -67,9 +67,22 @@ sstv/
 ├─ Package.swift
 ├─ README.md
 ├─ LICENSE
+├─ CONTRIBUTING.md
+├─ CODE_OF_CONDUCT.md
+├─ SECURITY.md
+├─ .gitattributes                 # Git LFS tracking for *.wav
+│
+├─ .github/
+│  ├─ copilot/                    # AI coding assistant instructions
+│  ├─ workflows/
+│  │  └─ ci.yml                   # GitHub Actions CI (build + test)
+│  ├─ ISSUE_TEMPLATE/
+│  │  ├─ bug_report.md
+│  │  └─ feature_request.md
+│  └─ pull_request_template.md
 │
 ├─ Sources/
-│  ├─ SSTVCore/              # Library target (reusable)
+│  ├─ SSTVCore/                   # Library target (reusable)
 │  │  ├─ Audio/
 │  │  │  └─ WAVReader.swift
 │  │  ├─ DSP/
@@ -84,6 +97,7 @@ sstv/
 │  │  │  ├─ SSTVMode.swift
 │  │  │  └─ VISDetector.swift
 │  │  ├─ Modes/
+│  │  │  ├─ ModeParameters.swift
 │  │  │  ├─ PD120Mode.swift
 │  │  │  ├─ PD180Mode.swift
 │  │  │  └─ Robot36Mode.swift
@@ -93,30 +107,37 @@ sstv/
 │  │  └─ Util/
 │  │     └─ ImageComparison.swift
 │  │
-│  └─ sstv/                   # CLI executable target
+│  └─ sstv/                       # CLI executable target
 │     └─ main.swift
 │
 ├─ Tests/
 │  └─ sstvTests/
+│     ├─ DecoderStateTests.swift
 │     ├─ GoldenFileTests.swift
-│     └─ PD120ModeTests.swift
+│     ├─ PD120ModeTests.swift
+│     └─ Robot36ModeTests.swift
 │
-├─ audio/
-│  ├─ test1.wav
-│  └─ test2.wav
+├─ audio/                         # Ad-hoc test files (see audio/README.md)
 │
-├─ samples/
+├─ samples/                       # SSTV recordings for testing (Git LFS)
+│  ├─ README.md                   # Source attribution and licensing
 │  ├─ PD120/
 │  ├─ PD180/
 │  └─ Robot36/
 │
+├─ expected/                      # Golden-file reference images
+│  ├─ PD120/
+│  └─ PD180/
+│
+├─ scripts/                       # Python analysis/comparison utilities
+│
 └─ docs/
    ├─ NEXT-STEPS.md
    ├─ PD120-Implementation.md
-   ├─ REFACTOR-FOR-UI.md
-   ├─ REFACTOR-TO-LIBRARY.md
    ├─ sstv_05.pdf
-   └─ adr/
+   ├─ adr/                        # Architecture Decision Records
+   ├─ modes/                      # Mode-specific documentation
+   └─ internal/                   # Historical development artifacts
 ```
 
 ---
@@ -298,7 +319,7 @@ decoder.reset()
 
 ---
 
-## �🚀 Building
+## 🚀 Building
 
 Requirements:
 - macOS 13+

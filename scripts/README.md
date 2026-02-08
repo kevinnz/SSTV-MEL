@@ -20,7 +20,17 @@ This directory contains Python utility scripts used for development, debugging, 
 
 ## Usage
 
-These scripts are development tools and contain hardcoded paths. They are not intended for general use but serve as diagnostic utilities during decoder development and testing.
+All scripts accept optional command-line arguments for the decoded and expected image paths. If no arguments are provided, they fall back to project-relative defaults.
+
+```bash
+# Using defaults (relative to project root)
+python3 scripts/compare_images.py
+
+# Using custom paths
+python3 scripts/compare_images.py path/to/decoded.png path/to/expected.jpg
+```
+
+These scripts are development and diagnostic utilities used during decoder development and testing.
 
 ## Requirements
 

@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
+import os
 import sys
 from PIL import Image
 import numpy as np
 
-# Load both images - accept command line args or use defaults
+# Project root is one level up from this script
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Accept command line args or use project-relative defaults
 if len(sys.argv) >= 3:
     decoded_path = sys.argv[1]
     expected_path = sys.argv[2]
 else:
-    decoded_path = '/Users/kevin/Documents/GitHub/SSTV-MEL/output_synced.png'
-    expected_path = '/Users/kevin/Documents/GitHub/SSTV-MEL/expected/PD180/Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg'
+    decoded_path = os.path.join(PROJECT_ROOT, 'output_synced.png')
+    expected_path = os.path.join(PROJECT_ROOT, 'expected', 'PD180', 'Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg')
 
 decoded = Image.open(decoded_path)
 expected = Image.open(expected_path)
@@ -91,12 +95,14 @@ print("\n=== Creating comparison images ===")
 comparison = Image.new('RGB', (decoded.width * 2, decoded.height))
 comparison.paste(decoded, (0, 0))
 comparison.paste(expected.resize(decoded.size, Image.Resampling.LANCZOS), (decoded.width, 0))
-comparison.save('/Users/kevin/Documents/GitHub/SSTV-MEL/comparison.png')
-print("Saved side-by-side comparison to comparison.png")
+comparison_path = os.path.join(PROJECT_ROOT, 'comparison.png')
+comparison.save(comparison_path)
+print(f"Saved side-by-side comparison to {comparison_path}")
 
 diff_img = Image.fromarray(np.clip(diff * 2, 0, 255).astype(np.uint8))
-diff_img.save('/Users/kevin/Documents/GitHub/SSTV-MEL/difference.png')
-print("Saved difference map to difference.png")
+difference_path = os.path.join(PROJECT_ROOT, 'difference.png')
+diff_img.save(difference_path)
+print(f"Saved difference map to {difference_path}")
 
 # Check if colors are swapped
 print("\n=== Checking color channel correlation ===")

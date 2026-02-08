@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
+import os
+import sys
 from PIL import Image
 import numpy as np
 
+# Project root is one level up from this script
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Accept optional CLI arguments, or use project-relative defaults
+decoded_path = sys.argv[1] if len(sys.argv) >= 2 else os.path.join(PROJECT_ROOT, 'output_aligned.png')
+expected_path = sys.argv[2] if len(sys.argv) >= 3 else os.path.join(PROJECT_ROOT, 'expected', 'Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg')
+
 # Load both images
-decoded = Image.open('/Users/kevin/Documents/GitHub/SSTV-MEL/output_aligned.png')
-expected = Image.open('/Users/kevin/Documents/GitHub/SSTV-MEL/expected/Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg')
+decoded = Image.open(decoded_path)
+expected = Image.open(expected_path)
 
 print("=== Image Dimensions ===")
 print(f"Decoded:  {decoded.size} ({decoded.mode})")
@@ -83,9 +92,11 @@ print("\n=== Creating comparison images ===")
 comparison = Image.new('RGB', (decoded.width * 2, decoded.height))
 comparison.paste(decoded, (0, 0))
 comparison.paste(expected.resize(decoded.size, Image.Resampling.LANCZOS), (decoded.width, 0))
-comparison.save('/Users/kevin/Documents/GitHub/SSTV-MEL/comparison_aligned.png')
-print("Saved side-by-side comparison to comparison_aligned.png")
+comparison_path = os.path.join(PROJECT_ROOT, 'comparison_aligned.png')
+comparison.save(comparison_path)
+print(f"Saved side-by-side comparison to {comparison_path}")
 
 diff_img = Image.fromarray(np.clip(diff * 2, 0, 255).astype(np.uint8))
-diff_img.save('/Users/kevin/Documents/GitHub/SSTV-MEL/difference_aligned.png')
-print("Saved difference map to difference_aligned.png")
+difference_path = os.path.join(PROJECT_ROOT, 'difference_aligned.png')
+diff_img.save(difference_path)
+print(f"Saved difference map to {difference_path}")

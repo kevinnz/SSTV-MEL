@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """Create a detailed visual comparison showing differences."""
+import os
+import sys
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
+# Project root is one level up from this script
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Accept optional CLI arguments, or use project-relative defaults
+decoded_path = sys.argv[1] if len(sys.argv) >= 2 else os.path.join(PROJECT_ROOT, 'output_synced.png')
+expected_path = sys.argv[2] if len(sys.argv) >= 3 else os.path.join(PROJECT_ROOT, 'expected', 'Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg')
+
 # Load both images
-decoded = Image.open('/Users/kevin/Documents/GitHub/SSTV-MEL/output_synced.png')
-expected = Image.open('/Users/kevin/Documents/GitHub/SSTV-MEL/expected/Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg')
+decoded = Image.open(decoded_path)
+expected = Image.open(expected_path)
 
 dec_arr = np.array(decoded.convert('RGB')).astype(float)
 exp_arr = np.array(expected.convert('RGB')).astype(float)
@@ -40,8 +49,9 @@ corr = np.corrcoef(dec_arr.flatten(), exp_arr.flatten())[0, 1]
 mean_diff = diff.mean()
 draw.text((10, stats_y), f"Correlation: {corr:.3f}  |  Mean Diff: {mean_diff:.1f}  |  Expected is JPEG (may have compression artifacts)", fill='white')
 
-comparison.save('/Users/kevin/Documents/GitHub/SSTV-MEL/detailed_comparison.png')
-print("Saved detailed_comparison.png")
+detailed_path = os.path.join(PROJECT_ROOT, 'detailed_comparison.png')
+comparison.save(detailed_path)
+print(f"Saved {detailed_path}")
 
 # Also create a zoomed comparison of a specific region
 print("\nCreating zoomed comparison of a specific region...")
@@ -60,8 +70,9 @@ zoomed = Image.new('RGB', (zoom_size * 8, zoom_size * 4))
 zoomed.paste(dec_zoom, (0, 0))
 zoomed.paste(exp_zoom, (zoom_size * 4, 0))
 
-zoomed.save('/Users/kevin/Documents/GitHub/SSTV-MEL/zoomed_comparison.png')
-print("Saved zoomed_comparison.png")
+zoomed_path = os.path.join(PROJECT_ROOT, 'zoomed_comparison.png')
+zoomed.save(zoomed_path)
+print(f"Saved {zoomed_path}")
 
 # Check for any repeating pattern issues
 print("\n=== Checking for line pair artifacts ===")

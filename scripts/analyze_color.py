@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
+import os
+import sys
 from PIL import Image
 import numpy as np
 
+# Project root is one level up from this script
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Accept optional CLI arguments, or use project-relative defaults
+decoded_path = sys.argv[1] if len(sys.argv) >= 2 else os.path.join(PROJECT_ROOT, 'output_synced.png')
+expected_path = sys.argv[2] if len(sys.argv) >= 3 else os.path.join(PROJECT_ROOT, 'expected', 'Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg')
+
 # Load both images
-decoded = Image.open('/Users/kevin/Documents/GitHub/SSTV-MEL/output_synced.png')
-expected = Image.open('/Users/kevin/Documents/GitHub/SSTV-MEL/expected/Space_Comms_-_2015-04-12_-_0428_UTC_-_80th_Yuri_Gagarin_image_5.jpg')
+decoded = Image.open(decoded_path)
+expected = Image.open(expected_path)
 
 dec_arr = np.array(decoded.convert('RGB')).astype(float)
 exp_arr = np.array(expected.convert('RGB')).astype(float)
@@ -76,8 +85,9 @@ diff_after = np.abs(both_arr - exp_arr)
 print(f"After 1.2x saturation + 1.1x contrast, mean diff: {diff_after.mean():.1f}")
 
 # Save enhanced version
-both_enhanced.save('/Users/kevin/Documents/GitHub/SSTV-MEL/output_enhanced.png')
-print("\nSaved enhanced version to output_enhanced.png")
+enhanced_path = os.path.join(PROJECT_ROOT, 'output_enhanced.png')
+both_enhanced.save(enhanced_path)
+print(f"\nSaved enhanced version to {enhanced_path}")
 
 # Compare with different levels
 print("\n=== Testing level adjustments ===")
