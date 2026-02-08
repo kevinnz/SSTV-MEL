@@ -40,3 +40,6 @@ decoded_*.png
 
 # Test artifacts
 .test_output/
+
+# Local prompt/plan files (not for public repo)
+.github/prompts/
