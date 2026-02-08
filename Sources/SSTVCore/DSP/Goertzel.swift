@@ -293,25 +293,4 @@ struct FrequencyTracker {
         return frequencies
     }
 
-    // MARK: - Progress Helper Methods
-
-    /// Create a progress bar string
-    private func makeProgressBar(progress: Double, width: Int) -> String {
-        let filled = Int(progress * Double(width))
-        let empty = width - filled
-        return "[" + String(repeating: "█", count: filled) + String(repeating: "░", count: empty) + "]"
-    }
-
-    /// Format time interval in human-readable format
-    private func formatTime(_ seconds: TimeInterval) -> String {
-        let totalSeconds = Int(seconds)
-        let minutes = totalSeconds / 60
-        let secs = totalSeconds % 60
-
-        if minutes > 0 {
-            return "\(minutes)m \(secs)s"
-        } else {
-            return "\(secs)s"
-        }
-    }
 }
