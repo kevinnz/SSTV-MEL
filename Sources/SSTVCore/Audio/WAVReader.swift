@@ -254,15 +254,16 @@ public struct WAVReader {
     }
 
     private static func readFloat64(_ data: Data, at offset: Int) -> Double {
-        // Read bytes individually to avoid alignment issues
-        let bits = UInt64(data[offset]) |
-                   (UInt64(data[offset + 1]) << 8) |
-                   (UInt64(data[offset + 2]) << 16) |
-                   (UInt64(data[offset + 3]) << 24) |
-                   (UInt64(data[offset + 4]) << 32) |
-                   (UInt64(data[offset + 5]) << 40) |
-                   (UInt64(data[offset + 6]) << 48) |
-                   (UInt64(data[offset + 7]) << 56)
-        return Double(bitPattern: bits)
+        // Read bytes individually to avoid alignment issues.
+        // Split into two 32-bit halves so the compiler can type-check in time.
+        let lo = UInt64(data[offset]) |
+                 (UInt64(data[offset + 1]) << 8) |
+                 (UInt64(data[offset + 2]) << 16) |
+                 (UInt64(data[offset + 3]) << 24)
+        let hi = (UInt64(data[offset + 4]) << 32) |
+                 (UInt64(data[offset + 5]) << 40) |
+                 (UInt64(data[offset + 6]) << 48) |
+                 (UInt64(data[offset + 7]) << 56)
+        return Double(bitPattern: lo | hi)
     }
 }
