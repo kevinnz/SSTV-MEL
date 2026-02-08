@@ -134,7 +134,8 @@ sstv/
 └─ docs/
    ├─ NEXT-STEPS.md
    ├─ PD120-Implementation.md
-   ├─ sstv_05.pdf
+   ├─ REFERENCES.md               # External references and attribution
+   ├─ sstv_05.pdf                 # SSTV Handbook spec (see REFERENCES.md)
    ├─ adr/                        # Architecture Decision Records
    ├─ modes/                      # Mode-specific documentation
    └─ internal/                   # Historical development artifacts
