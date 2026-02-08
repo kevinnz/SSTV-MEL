@@ -12,7 +12,7 @@
 ## Rules
 - Tests must be deterministic
 - No reliance on wall-clock time
-- Sample files live in `/Samples`
+- Sample files live in `samples/`
 
 ## Image Tests
 - Compare hashes, not pixel-by-pixel loops
