@@ -152,7 +152,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/kevinnz/SSTV-MEL.git", from: "0.5.0")
+    .package(url: "https://github.com/kevinnz/SSTV-MEL.git", from: "0.6.0")
 ],
 targets: [
     .target(

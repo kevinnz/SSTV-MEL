@@ -25,7 +25,8 @@ xcuserdata/
 .idea/
 
 # Generated files
-output.png
+output.*
+test.png
 decoded_*.png
 
 # Temporary files
