@@ -117,10 +117,8 @@ final class WAVReaderTests: XCTestCase {
 
     /// Write data to a temp file and return the path
     private func writeTempFile(_ data: Data, name: String) throws -> String {
-        let baseTempDir = FileManager.default.temporaryDirectory
-        let uniqueDir = baseTempDir.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: uniqueDir, withIntermediateDirectories: true)
-        let fileURL = uniqueDir.appendingPathComponent(name)
+        let uniqueName = UUID().uuidString + "-" + name
+        let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueName)
         try data.write(to: fileURL)
         return fileURL.path
     }
