@@ -125,8 +125,8 @@ final class ImageWriterTests: XCTestCase {
             buffer.setRow(y: y, rowPixels: row)
         }
 
-        let tempDir = NSTemporaryDirectory()
-        let path = (tempDir as NSString).appendingPathComponent("testWrite.png")
+        let tempDir = FileManager.default.temporaryDirectory
+        let path = tempDir.appendingPathComponent("\(UUID().uuidString)-testWrite.png").path
         defer { try? FileManager.default.removeItem(atPath: path) }
 
         try ImageWriter.write(buffer: buffer, to: path)
@@ -143,8 +143,8 @@ final class ImageWriterTests: XCTestCase {
             buffer.setRow(y: y, rowPixels: row)
         }
 
-        let tempDir = NSTemporaryDirectory()
-        let path = (tempDir as NSString).appendingPathComponent("testWrite.jpg")
+        let tempDir = FileManager.default.temporaryDirectory
+        let path = tempDir.appendingPathComponent("\(UUID().uuidString)-testWrite.jpg").path
         defer { try? FileManager.default.removeItem(atPath: path) }
 
         try ImageWriter.write(buffer: buffer, to: path)
@@ -157,10 +157,10 @@ final class ImageWriterTests: XCTestCase {
         let row = [Double](repeating: 0.5, count: 4 * 3)
         for y in 0..<4 { buffer.setRow(y: y, rowPixels: row) }
 
-        let tempDir = NSTemporaryDirectory()
+        let tempDir = FileManager.default.temporaryDirectory
 
         // Write with .png extension, no explicit format
-        let pngPath = (tempDir as NSString).appendingPathComponent("autoDetect.png")
+        let pngPath = tempDir.appendingPathComponent("\(UUID().uuidString)-autoDetect.png").path
         defer { try? FileManager.default.removeItem(atPath: pngPath) }
         try ImageWriter.write(buffer: buffer, to: pngPath)
 
@@ -169,7 +169,7 @@ final class ImageWriterTests: XCTestCase {
         XCTAssertEqual(Array(pngData.prefix(4)), pngSignature)
 
         // Write with .jpg extension, no explicit format
-        let jpgPath = (tempDir as NSString).appendingPathComponent("autoDetect.jpg")
+        let jpgPath = tempDir.appendingPathComponent("\(UUID().uuidString)-autoDetect.jpg").path
         defer { try? FileManager.default.removeItem(atPath: jpgPath) }
         try ImageWriter.write(buffer: buffer, to: jpgPath)
 

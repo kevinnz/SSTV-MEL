@@ -17,13 +17,20 @@ final class DecodingOptionsTests: XCTestCase {
     // MARK: - Phase Offset
 
     func testPhaseOffsetClampingViaMutation() {
-        // Note: init does NOT trigger didSet, so clamping only applies on mutation
         var options = DecodingOptions()
         options.phaseOffsetMs = 100.0 // Exceeds ±50
         XCTAssertEqual(options.phaseOffsetMs, 50.0, accuracy: 0.001)
 
         options.phaseOffsetMs = -100.0
         XCTAssertEqual(options.phaseOffsetMs, -50.0, accuracy: 0.001)
+    }
+
+    func testPhaseOffsetClampingViaInit() {
+        let options = DecodingOptions(phaseOffsetMs: 100.0)
+        XCTAssertEqual(options.phaseOffsetMs, 50.0, accuracy: 0.001)
+
+        let options2 = DecodingOptions(phaseOffsetMs: -100.0)
+        XCTAssertEqual(options2.phaseOffsetMs, -50.0, accuracy: 0.001)
     }
 
     func testPhaseOffsetMutation() {
@@ -49,13 +56,20 @@ final class DecodingOptionsTests: XCTestCase {
     // MARK: - Skew
 
     func testSkewClampingViaMutation() {
-        // Note: init does NOT trigger didSet, so clamping only applies on mutation
         var options = DecodingOptions()
         options.skewMsPerLine = 5.0 // Exceeds ±1.0
         XCTAssertEqual(options.skewMsPerLine, 1.0, accuracy: 0.001)
 
         options.skewMsPerLine = -5.0
         XCTAssertEqual(options.skewMsPerLine, -1.0, accuracy: 0.001)
+    }
+
+    func testSkewClampingViaInit() {
+        let options = DecodingOptions(skewMsPerLine: 5.0)
+        XCTAssertEqual(options.skewMsPerLine, 1.0, accuracy: 0.001)
+
+        let options2 = DecodingOptions(skewMsPerLine: -5.0)
+        XCTAssertEqual(options2.skewMsPerLine, -1.0, accuracy: 0.001)
     }
 
     func testSkewMutation() {

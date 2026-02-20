@@ -117,10 +117,12 @@ final class WAVReaderTests: XCTestCase {
 
     /// Write data to a temp file and return the path
     private func writeTempFile(_ data: Data, name: String) throws -> String {
-        let tempDir = NSTemporaryDirectory()
-        let path = (tempDir as NSString).appendingPathComponent(name)
-        try data.write(to: URL(fileURLWithPath: path))
-        return path
+        let baseTempDir = FileManager.default.temporaryDirectory
+        let uniqueDir = baseTempDir.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: uniqueDir, withIntermediateDirectories: true)
+        let fileURL = uniqueDir.appendingPathComponent(name)
+        try data.write(to: fileURL)
+        return fileURL.path
     }
 
     // MARK: - Successful Read Tests
@@ -232,7 +234,7 @@ final class WAVReaderTests: XCTestCase {
         XCTAssertEqual(mono[1], -0.25, accuracy: 0.001)
     }
 
-    func testWAVFileStereoToDuration() throws {
+    func testWAVFileStereoDuration() throws {
         // 2 channels, 44100 total samples → 22050 per channel → 0.5 seconds
         let samples = [Int16](repeating: 0, count: 44100)
         let wavData = buildWAV16(sampleRate: 44100, channels: 2, samples: samples)
@@ -317,12 +319,13 @@ final class WAVReaderTests: XCTestCase {
     }
 
     func testReadMissingDataChunk() throws {
-        // Build a WAV with fmt chunk but replace "data" with something else
+        // Build a WAV with RIFF/WAVE header + fmt chunk + a "junk" chunk (no "data" chunk)
+        // Total must be >= 44 bytes to pass the size check and reach chunk scanning
         var data = Data()
         data.append(contentsOf: "RIFF".utf8)
         data.append(contentsOf: withUnsafeBytes(of: UInt32(36).littleEndian) { Array($0) })
         data.append(contentsOf: "WAVE".utf8)
-        // fmt chunk
+        // fmt chunk (24 bytes)
         data.append(contentsOf: "fmt ".utf8)
         data.append(contentsOf: withUnsafeBytes(of: UInt32(16).littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian) { Array($0) }) // PCM
@@ -331,6 +334,9 @@ final class WAVReaderTests: XCTestCase {
         data.append(contentsOf: withUnsafeBytes(of: UInt32(88200).littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: UInt16(2).littleEndian) { Array($0) })
         data.append(contentsOf: withUnsafeBytes(of: UInt16(16).littleEndian) { Array($0) })
+        // A "junk" chunk instead of "data" (8 bytes, brings total to 44)
+        data.append(contentsOf: "junk".utf8)
+        data.append(contentsOf: withUnsafeBytes(of: UInt32(0).littleEndian) { Array($0) })
         // NO data chunk
 
         let path = try writeTempFile(data, name: "noData.wav")
