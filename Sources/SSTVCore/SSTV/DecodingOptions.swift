@@ -140,8 +140,8 @@ public struct DecodingOptions {
         skewMsPerLine: Double = 0.0,
         syncRecoveryThreshold: Double = Self.defaultSyncRecoveryThreshold
     ) {
-        self.phaseOffsetMs = phaseOffsetMs
-        self.skewMsPerLine = skewMsPerLine
+        self.phaseOffsetMs = Self.clampPhase(phaseOffsetMs)
+        self.skewMsPerLine = Self.clampSkew(skewMsPerLine)
         self.syncRecoveryThreshold = min(max(syncRecoveryThreshold, 0.0), 1.0)
     }
 
