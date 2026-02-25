@@ -395,6 +395,18 @@ USAGE: sstv decode <input> [<output>] [--mode <mode>] [--format <format>]
 | `--verbose` | `-V` | Show detailed diagnostic output |
 | `--version` | | Show version number |
 
+### Info Options
+
+```
+USAGE: sstv info <input> [--json] [--quiet]
+```
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `<input>` | | WAV file path, or `-` for stdin |
+| `--json` | | Output structured JSON result to stdout |
+| `--quiet` | `-Q` | Suppress decorative output |
+
 ---
 
 ## 🖼️ Output Formats
@@ -467,7 +479,7 @@ swift run sstv decode input.wav output.png --json
 
 ```json
 {
-  "audioDuration": 126.3,
+  "audioDuration": 133.49,
   "command": "decode",
   "dimensions": { "height": 496, "width": 640 },
   "format": "png",
@@ -477,9 +489,9 @@ swift run sstv decode input.wav output.png --json
   "modeSource": "vis-detected",
   "output": "output.png",
   "partial": false,
-  "phaseOffsetMs": 0.0,
-  "sampleRate": 44100.0,
-  "skewMsPerLine": 0.0,
+  "phaseOffsetMs": 0,
+  "sampleRate": 44100,
+  "skewMsPerLine": 0,
   "success": true,
   "totalLines": 496
 }
@@ -510,14 +522,16 @@ swift run sstv info input.wav --json
   "channels": 1,
   "command": "info",
   "detectedMode": "PD120",
-  "duration": 126.3,
+  "duration": 133.49,
   "expectedDimensions": { "height": 496, "width": 640 },
   "input": "input.wav",
-  "sampleRate": 44100.0,
+  "sampleRate": 44100,
   "success": true,
   "visCode": "0x5F"
 }
 ```
+
+> **Note:** `detectedMode`, `visCode`, and `expectedDimensions` are omitted from the JSON when detection fails (the field is absent, not null).
 
 ### Exit Codes
 
