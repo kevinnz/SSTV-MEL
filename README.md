@@ -54,7 +54,7 @@ Key principles:
 - Image output is isolated behind a writer
 - Decoder emits events via delegate for UI integration
 - Streaming API accepts samples incrementally
-- `main.swift` coordinates, nothing more
+- CLI coordinates using `swift-argument-parser`, nothing more
 
 This layout is deliberate so the core decoder can later be reused by a macOS app without refactoring.
 
@@ -108,7 +108,12 @@ sstv/
 │  │     └─ ImageComparison.swift
 │  │
 │  └─ sstv/                       # CLI executable target
-│     └─ main.swift
+│     ├─ SSTVCommand.swift          # Root command (@main entry point)
+│     ├─ DecodeCommand.swift        # `decode` subcommand (default)
+│     ├─ InfoCommand.swift          # `info` subcommand
+│     ├─ CLIDecoderDelegate.swift   # Decoder delegate (stderr-aware)
+│     ├─ CLIOutput.swift            # JSON result types & output helpers
+│     └─ ExitCodes.swift            # Exit code constants
 │
 ├─ Tests/
 │  └─ sstvTests/
@@ -320,7 +325,7 @@ decoder.reset()
 
 ---
 
-## 🚀 Building
+## 🚀 Building & Usage
 
 Requirements:
 - macOS 13+
@@ -333,123 +338,106 @@ Build the executable:
 swift build
 ```
 
-Run the decoder:
+### Subcommands
+
+The CLI has two subcommands. `decode` is the default when no subcommand is specified.
+
+| Subcommand | Description |
+|------------|-------------|
+| `sstv decode` | Decode an SSTV audio signal into an image (default) |
+| `sstv info`   | Inspect a WAV file and detect the SSTV mode |
+
+### Quick Start
 
 ```bash
-# Basic usage (auto-detects mode via VIS code, PNG output)
+# Basic usage (auto-detects mode, PNG output)
 swift run sstv input.wav
 
-# Output as JPEG (auto-detected from extension)
+# These are equivalent — decode is the default subcommand
+swift run sstv decode input.wav
+swift run sstv input.wav
+
+# Output as JPEG
 swift run sstv input.wav output.jpg
 
 # Force JPEG format with custom quality
 swift run sstv input.wav output.png --format jpeg --quality 0.95
 
-# Custom output file
-swift run sstv input.wav output.png
-
 # Force a specific mode
 swift run sstv input.wav --mode PD120
-swift run sstv input.wav --mode PD180
-swift run sstv input.wav --mode Robot36
+
+# Inspect audio metadata and detect mode
+swift run sstv info input.wav
+
+# Read from stdin
+cat input.wav | swift run sstv decode - output.png
 ```
 
+### Decode Options
+
+```
+USAGE: sstv decode <input> [<output>] [--mode <mode>] [--format <format>]
+                   [--quality <quality>] [--phase <phase>] [--skew <skew>]
+                   [--json] [--quiet] [--verbose]
+```
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `<input>` | | WAV file path, or `-` for stdin |
+| `<output>` | | Output image path (default: `output.png`) |
+| `--mode` | `-m` | Force SSTV mode: `PD120`, `PD180`, `Robot36` |
+| `--format` | `-f` | Output format: `png`, `jpeg`, `jpg` |
+| `--quality` | `-q` | JPEG quality 0.0–1.0 (default: 0.9) |
+| `--phase` | `-p` | Horizontal phase offset in ms (±50.0) |
+| `--skew` | `-s` | Skew correction in ms/line (±1.0) |
+| `--json` | | Output structured JSON result to stdout |
+| `--quiet` | `-Q` | Suppress progress output (errors still on stderr) |
+| `--verbose` | `-V` | Show detailed diagnostic output |
+| `--version` | | Show version number |
+
 ---
+
 ## 🖼️ Output Formats
 
-The decoder supports both **PNG** and **JPEG** output formats.
-
-### Format Selection
-
-The output format is automatically detected from the file extension:
-- `.png` → PNG format
-- `.jpg` or `.jpeg` → JPEG format
-
-You can also explicitly specify the format using the `--format` or `-f` option:
+The output format is automatically detected from the file extension (`.png`, `.jpg`, `.jpeg`), or set explicitly with `--format`.
 
 ```bash
 # Force JPEG format even with .png extension
 swift run sstv input.wav output.png --format jpeg
 
-# Force PNG format with .jpg extension
-swift run sstv input.wav output.jpg --format png
-```
-
-### JPEG Quality
-
-When outputting JPEG, you can control the compression quality using `--quality` or `-q`:
-
-```bash
-# High quality JPEG (larger file)
+# JPEG with custom quality (0.0–1.0, default: 0.9)
 swift run sstv input.wav output.jpg --quality 0.95
-
-# Lower quality JPEG (smaller file)
-swift run sstv input.wav output.jpg --quality 0.7
-
-# Default quality is 0.9
-swift run sstv input.wav output.jpg
 ```
-
-**Quality values:**
-- `0.0` = lowest quality, smallest file
-- `1.0` = highest quality, largest file
-- `0.9` = default (good balance)
-- Recommended range: `0.85` - `0.95` for SSTV images
 
 **Format recommendations:**
-- **PNG**: Lossless compression, best for archival and analysis
-- **JPEG**: Lossy compression, smaller files, good for sharing
+- **PNG**: Lossless, best for archival and analysis
+- **JPEG**: Lossy, smaller files, good for sharing (recommended quality: `0.85`–`0.95`)
 
 ---
-## 🎛 Phase and Skew Adjustment
 
-SSTV images often need fine-tuning due to timing variations in recordings. The decoder provides two adjustment options:
+## 🎛 Phase and Skew Adjustment
 
 ### Phase Offset (`-p`, `--phase`)
 
-Corrects **horizontal alignment** issues caused by sync timing errors.
+Corrects **horizontal alignment** — shifts the image left or right.
 
-| Value | Effect |
-|-------|--------|
-| Positive | Shifts image content right |
-| Negative | Shifts image content left |
-
-- **Typical range**: -15 to +15 ms
-- **Maximum**: ±50 ms
+- **Typical range**: -15 to +15 ms — **Maximum**: ±50 ms
 - **Good starting point for PD120**: `11` ms
 
 ### Skew Correction (`-s`, `--skew`)
 
-Corrects **diagonal slanting** caused by sample rate mismatch between transmitter and receiver.
+Corrects **diagonal slanting** caused by sample rate mismatch.
 
-| Value | Effect |
-|-------|--------|
-| Positive | Corrects clockwise slant |
-| Negative | Corrects counter-clockwise slant |
-
-- **Typical range**: -0.05 to +0.05 ms/line
-- **Maximum**: ±1.0 ms/line
+- **Typical range**: -0.05 to +0.05 ms/line — **Maximum**: ±1.0 ms/line
 - **Good starting point**: `0.02` ms/line
 
 ### Examples
 
 ```bash
-# Shift image 11ms to the right (good for many PD120 recordings)
-swift run sstv input.wav -p 11
-
-# Output as JPEG with adjustments
-swift run sstv input.wav output.jpg -p 11 -s 0.015
-
-# High quality JPEG output
+swift run sstv input.wav -p 11                   # Shift 11ms right (PD120)
+swift run sstv input.wav -s 0.015                # Correct skew
+swift run sstv input.wav -p 11 -s 0.015          # Combined (PD120 default)
 swift run sstv input.wav output.jpg -q 0.95 -p 11
-
-# Correct skew of 0.015ms per line
-swift run sstv input.wav -s 0.015
-
-# Combined adjustment (recommended for PD120)
-swift run sstv input.wav -p 11 -s 0.015
-
-# Force PD180 mode with adjustments
 swift run sstv input.wav --mode PD180 -p 5 -s 0.01
 ```
 
@@ -457,10 +445,111 @@ swift run sstv input.wav --mode PD180 -p 5 -s 0.01
 
 | Problem | Solution |
 |---------|----------|
-| Image shifted horizontally | Adjust `-p` (try values between -15 and +15) |
-| Vertical lines appear slanted | Adjust `-s` (try values between -0.05 and +0.05) |
-| Wrong colors or stretched image | Force correct mode with `--mode PD120`, `--mode PD180`, or `--mode Robot36` |
-| Image looks compressed/expanded | You may be using wrong mode; try the other one |
+| Image shifted horizontally | Adjust `-p` (try -15 to +15) |
+| Vertical lines appear slanted | Adjust `-s` (try -0.05 to +0.05) |
+| Wrong colors or stretched image | Force correct mode with `--mode` |
+
+---
+
+## 🤖 Machine & AI Agent Integration
+
+The CLI is designed to work well with AI coding assistants (GitHub Copilot, Claude Code, etc.) and automated pipelines.
+
+### JSON Output (`--json`)
+
+Use `--json` on any subcommand to get structured, parseable output on stdout. All human-readable text (progress, banners) goes to stderr and won't interfere.
+
+**Successful decode:**
+
+```bash
+swift run sstv decode input.wav output.png --json
+```
+
+```json
+{
+  "audioDuration": 126.3,
+  "command": "decode",
+  "dimensions": { "height": 496, "width": 640 },
+  "format": "png",
+  "input": "input.wav",
+  "linesDecoded": 496,
+  "mode": "PD120",
+  "modeSource": "vis-detected",
+  "output": "output.png",
+  "partial": false,
+  "phaseOffsetMs": 0.0,
+  "sampleRate": 44100.0,
+  "skewMsPerLine": 0.0,
+  "success": true,
+  "totalLines": 496
+}
+```
+
+**Error output:**
+
+```json
+{
+  "command": "decode",
+  "error": {
+    "code": "sync_not_found",
+    "message": "No sync pattern found in audio."
+  },
+  "success": false
+}
+```
+
+**Inspect metadata:**
+
+```bash
+swift run sstv info input.wav --json
+```
+
+```json
+{
+  "bitsPerSample": 16,
+  "channels": 1,
+  "command": "info",
+  "detectedMode": "PD120",
+  "duration": 126.3,
+  "expectedDimensions": { "height": 496, "width": 640 },
+  "input": "input.wav",
+  "sampleRate": 44100.0,
+  "success": true,
+  "visCode": "0x5F"
+}
+```
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0`  | Success |
+| `1`  | General error |
+| `2`  | Invalid arguments |
+| `10` | Input file not found |
+| `11` | Invalid WAV format |
+| `20` | VIS detection failed |
+| `21` | Sync not found |
+| `22` | Sync lost (partial image written) |
+| `30` | Output write failed |
+
+### Quiet Mode
+
+Use `--quiet` (`-Q`) to suppress all decorative output. Pairs well with exit code checking:
+
+```bash
+swift run sstv decode input.wav output.png --quiet
+echo $?  # 0 = success
+```
+
+### Stdin Support
+
+Read WAV data from a pipe using `-` as the input:
+
+```bash
+cat input.wav | swift run sstv decode - output.png --json
+curl -s https://example.com/signal.wav | swift run sstv decode - output.png
+```
 
 ---
 

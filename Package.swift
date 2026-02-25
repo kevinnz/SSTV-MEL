@@ -19,6 +19,9 @@ let package = Package(
             targets: ["sstv"]
         )
     ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
+    ],
     targets: [
         .target(
             name: "SSTVCore",
@@ -26,7 +29,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "sstv",
-            dependencies: ["SSTVCore"],
+            dependencies: [
+                "SSTVCore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
             path: "Sources/sstv"
         ),
         .testTarget(
