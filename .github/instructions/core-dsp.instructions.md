@@ -1,6 +1,12 @@
-# Copilot Instructions — DSP Layer
+---
+description: "DSP layer rules for SSTV-MEL signal processing code"
+applyTo: "Sources/SSTVCore/DSP/**"
+---
+
+# DSP Layer Instructions
 
 ## Scope
+
 DSP code handles:
 - Tone detection
 - Energy measurement
@@ -14,16 +20,19 @@ It must NOT:
 - Perform color conversion
 
 ## Algorithms
+
 - Prefer Goertzel over FFT unless otherwise specified
 - Windowing must be explicit and named
 - Sampling rate assumptions must be documented
 
 ## Precision
+
 - Use Double unless Float is explicitly required
 - Avoid premature optimisation
 - Deterministic results are more important than speed
 
 ## Testing
+
 DSP functions must be testable with:
 - Synthetic sine waves
 - Known frequencies
