@@ -237,7 +237,7 @@ public struct PD180Parameters: SSTVModeParameters, Sendable {
     public init() {
         self.frameDurationMs = 754.29
         self.syncPulseMs = 20.0
-        self.porchMs = 2.0
+        self.porchMs = 2.08
         self.yDurationMs = 183.07
         self.cbDurationMs = 183.07
         self.crDurationMs = 183.07
@@ -252,7 +252,7 @@ public struct PD180Parameters: SSTVModeParameters, Sendable {
     public init(
         frameDurationMs: Double = 754.29,
         syncPulseMs: Double = 20.0,
-        porchMs: Double = 2.0,
+        porchMs: Double = 2.08,
         yDurationMs: Double = 183.07,
         cbDurationMs: Double = 183.07,
         crDurationMs: Double = 183.07,

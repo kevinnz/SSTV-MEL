@@ -196,32 +196,40 @@ extension Robot36Mode {
         let cbEndSample = oddCbEndMs * msToSamples + chromaSampleOffset
 
         // Decode all components
-        let y0Values = decodeComponentTimeBased(
+        let y0Values = PDModeShared.decodeComponentTimeBased(
             frequencies: frequencies,
             startSample: y0StartSample,
             endSample: y0EndSample,
-            pixelCount: width
+            pixelCount: width,
+            blackFrequencyHz: blackFrequencyHz,
+            frequencyRangeHz: frequencyRangeHz
         )
 
-        let y1Values = decodeComponentTimeBased(
+        let y1Values = PDModeShared.decodeComponentTimeBased(
             frequencies: frequencies,
             startSample: y1StartSample,
             endSample: y1EndSample,
-            pixelCount: width
+            pixelCount: width,
+            blackFrequencyHz: blackFrequencyHz,
+            frequencyRangeHz: frequencyRangeHz
         )
 
-        let crValues = decodeChromaComponentTimeBased(
+        let crValues = PDModeShared.decodeComponentTimeBased(
             frequencies: frequencies,
             startSample: crStartSample,
             endSample: crEndSample,
-            pixelCount: width
+            pixelCount: width,
+            blackFrequencyHz: blackFrequencyHz,
+            frequencyRangeHz: frequencyRangeHz
         )
 
-        let cbValues = decodeChromaComponentTimeBased(
+        let cbValues = PDModeShared.decodeComponentTimeBased(
             frequencies: frequencies,
             startSample: cbStartSample,
             endSample: cbEndSample,
-            pixelCount: width
+            pixelCount: width,
+            blackFrequencyHz: blackFrequencyHz,
+            frequencyRangeHz: frequencyRangeHz
         )
 
         // Convert to RGB for both lines
@@ -230,7 +238,7 @@ extension Robot36Mode {
 
         for i in 0..<width {
             // Line 0 (even) uses Y0
-            let (r0, g0, b0) = ycbcrToRGB(
+            let (r0, g0, b0) = PDModeShared.ycbcrToRGB(
                 y: y0Values[i],
                 cb: cbValues[i],
                 cr: crValues[i]
@@ -240,7 +248,7 @@ extension Robot36Mode {
             line0[i * 3 + 2] = b0
 
             // Line 1 (odd) uses Y1
-            let (r1, g1, b1) = ycbcrToRGB(
+            let (r1, g1, b1) = PDModeShared.ycbcrToRGB(
                 y: y1Values[i],
                 cb: cbValues[i],
                 cr: crValues[i]
@@ -269,107 +277,6 @@ extension Robot36Mode {
         return lineIndex % 2 == 0 ? frame[0] : frame[1]
     }
 
-    /// Decode a luminance component (Y) using TIME-BASED fractional sample indexing.
-    ///
-    /// Maps frequency range [blackFrequencyHz...whiteFrequencyHz] to [0.0...1.0]
-    ///
-    /// - Parameters:
-    ///   - frequencies: Full array of detected frequencies for the entire frame
-    ///   - startSample: Fractional sample index where this component starts
-    ///   - endSample: Fractional sample index where this component ends
-    ///   - pixelCount: Number of pixels to decode (typically 320)
-    ///
-    /// - Returns: Array of normalized pixel values (0.0...1.0), length = pixelCount
-    private func decodeComponentTimeBased(
-        frequencies: [Double],
-        startSample: Double,
-        endSample: Double,
-        pixelCount: Int
-    ) -> [Double] {
-        var values = [Double](repeating: 0.0, count: pixelCount)
-
-        let componentDurationSamples = endSample - startSample
-        let samplesPerPixel = componentDurationSamples / Double(pixelCount)
-
-        for pixelIndex in 0..<pixelCount {
-            // Calculate the EXACT fractional sample position for this pixel's CENTER
-            let pixelCenterPosition = startSample + (Double(pixelIndex) + 0.5) * samplesPerPixel
-
-            // Clamp position strictly within the frequency array bounds
-            let clampedPosition = min(max(pixelCenterPosition, 0.0), Double(frequencies.count - 1))
-
-            // Perform linear interpolation between adjacent samples
-            let lowerIndex = Int(clampedPosition)
-            let upperIndex = min(lowerIndex + 1, frequencies.count - 1)
-            let fraction = clampedPosition - Double(lowerIndex)
-
-            // Bounds check
-            guard lowerIndex >= 0 && lowerIndex < frequencies.count &&
-                  upperIndex >= 0 && upperIndex < frequencies.count else {
-                values[pixelIndex] = 0.5
-                continue
-            }
-
-            // Linear interpolation
-            let lowerFreq = frequencies[lowerIndex]
-            let upperFreq = frequencies[upperIndex]
-            let interpolatedFreq = lowerFreq * (1.0 - fraction) + upperFreq * fraction
-
-            // Map frequency to luminance value
-            values[pixelIndex] = frequencyToLuminance(interpolatedFreq)
-        }
-
-        return values
-    }
-
-    /// Decode a chrominance component (Cb or Cr) using TIME-BASED fractional sample indexing.
-    ///
-    /// Chrominance is centered around 1900 Hz (neutral), with the range [1500...2300] Hz
-    /// mapping to [-0.5...+0.5] chrominance deviation, then offset to [0.0...1.0].
-    ///
-    /// - Parameters:
-    ///   - frequencies: Full array of detected frequencies for the entire frame
-    ///   - startSample: Fractional sample index where this component starts
-    ///   - endSample: Fractional sample index where this component ends
-    ///   - pixelCount: Number of pixels to decode (typically 320)
-    ///
-    /// - Returns: Array of normalized chrominance values (0.0...1.0), length = pixelCount
-    private func decodeChromaComponentTimeBased(
-        frequencies: [Double],
-        startSample: Double,
-        endSample: Double,
-        pixelCount: Int
-    ) -> [Double] {
-        var values = [Double](repeating: 0.5, count: pixelCount)
-
-        let componentDurationSamples = endSample - startSample
-        let samplesPerPixel = componentDurationSamples / Double(pixelCount)
-
-        for pixelIndex in 0..<pixelCount {
-            let pixelCenterPosition = startSample + (Double(pixelIndex) + 0.5) * samplesPerPixel
-            let clampedPosition = min(max(pixelCenterPosition, 0.0), Double(frequencies.count - 1))
-
-            let lowerIndex = Int(clampedPosition)
-            let upperIndex = min(lowerIndex + 1, frequencies.count - 1)
-            let fraction = clampedPosition - Double(lowerIndex)
-
-            guard lowerIndex >= 0 && lowerIndex < frequencies.count &&
-                  upperIndex >= 0 && upperIndex < frequencies.count else {
-                values[pixelIndex] = 0.5
-                continue
-            }
-
-            let lowerFreq = frequencies[lowerIndex]
-            let upperFreq = frequencies[upperIndex]
-            let interpolatedFreq = lowerFreq * (1.0 - fraction) + upperFreq * fraction
-
-            // Map frequency to chrominance value
-            values[pixelIndex] = frequencyToChroma(interpolatedFreq)
-        }
-
-        return values
-    }
-
     /// Convert a detected frequency to a normalized luminance value.
     ///
     /// Maps the frequency range [blackFrequencyHz...whiteFrequencyHz]
@@ -378,8 +285,7 @@ extension Robot36Mode {
     /// - Parameter frequency: Detected frequency in Hz
     /// - Returns: Normalized luminance value (0.0...1.0), clamped
     internal func frequencyToLuminance(_ frequency: Double) -> Double {
-        let normalized = (frequency - blackFrequencyHz) / frequencyRangeHz
-        return min(max(normalized, 0.0), 1.0)
+        PDModeShared.frequencyToValue(frequency, blackFrequencyHz: blackFrequencyHz, frequencyRangeHz: frequencyRangeHz)
     }
 
     /// Convert a detected frequency to a normalized chrominance value.
@@ -394,10 +300,7 @@ extension Robot36Mode {
     /// - Parameter frequency: Detected frequency in Hz
     /// - Returns: Normalized chrominance value (0.0...1.0), clamped
     internal func frequencyToChroma(_ frequency: Double) -> Double {
-        // Map [1500...2300] to [0.0...1.0]
-        // This places chromaZeroFrequencyHz (1900 Hz) at 0.5 (neutral chrominance)
-        let normalized = (frequency - blackFrequencyHz) / frequencyRangeHz
-        return min(max(normalized, 0.0), 1.0)
+        PDModeShared.frequencyToValue(frequency, blackFrequencyHz: blackFrequencyHz, frequencyRangeHz: frequencyRangeHz)
     }
 
     /// Convert YCbCr color values to RGB.
@@ -411,20 +314,6 @@ extension Robot36Mode {
     ///
     /// - Returns: RGB tuple, each component in range (0.0...1.0), clamped
     internal func ycbcrToRGB(y: Double, cb: Double, cr: Double) -> (r: Double, g: Double, b: Double) {
-        // Center Cb and Cr around 0.5
-        let cbCentered = cb - 0.5
-        let crCentered = cr - 0.5
-
-        // ITU-R BT.601 conversion
-        let r = y + 1.402 * crCentered
-        let g = y - 0.344136 * cbCentered - 0.714136 * crCentered
-        let b = y + 1.772 * cbCentered
-
-        // Clamp to valid range
-        return (
-            r: min(max(r, 0.0), 1.0),
-            g: min(max(g, 0.0), 1.0),
-            b: min(max(b, 0.0), 1.0)
-        )
+        PDModeShared.ycbcrToRGB(y: y, cb: cb, cr: cr)
     }
 }

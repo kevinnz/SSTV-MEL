@@ -21,7 +21,7 @@ final class PD180ModeTests: XCTestCase {
 
         // Verify timing constants
         XCTAssertEqual(mode.syncPulseMs, 20.0, accuracy: 0.001)
-        XCTAssertEqual(mode.porchMs, 2.0, accuracy: 0.001)
+        XCTAssertEqual(mode.porchMs, 2.08, accuracy: 0.001)
         XCTAssertEqual(mode.yDurationMs, 183.07, accuracy: 0.01)
         XCTAssertEqual(mode.cbDurationMs, 183.07, accuracy: 0.01)
         XCTAssertEqual(mode.crDurationMs, 183.07, accuracy: 0.01)

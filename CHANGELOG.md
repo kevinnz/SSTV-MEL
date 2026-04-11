@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-04-12
+
+### Performance
+
+- Fix O(n²) redundant FM demodulation in streaming decoder — track last demodulated count to avoid reprocessing the entire sample buffer on each `processSamples` call
+- Convert `sampleBuffer` from `[Float]` to `[Double]` throughout `SSTVDecoderCore`, eliminating repeated Float→Double conversions in VIS detection, signal search, and frame decoding
+- Optimise `ImageBuffer.setRow()` to use `replaceSubrange` instead of element-by-element copy
+- Optimise `ImageBuffer.toRGB8()` and `toRGBA8()` with pre-allocated arrays and indexed writes
+
+### Fixed
+
+- PD180 porch timing corrected from 2.0ms to 2.08ms (matching PD120 and spec)
+- VIS detector now performs even-parity single-bit error correction before rejecting ambiguous codes
+- VIS detector retries with shifted analysis windows (±5, ±3, ±1 steps) for improved robustness
+
+### Added
+
+- `PDModeShared` — shared PD mode logic (`decodeComponentTimeBased`, `frequencyToValue`, `ycbcrToRGB`) eliminating duplication across PD120, PD180, and Robot36 modes
+- `DecodingOptions.skipSecondsForVIS` — configurable VIS search start offset (default 3.0s, range 0–30s)
+- Signal search retry-from-zero fallback in `findSignalStartWithConfidence()` when initial skip-based search finds insufficient valid frames
+- 33 new unit tests: Goertzel/ToneDetector/FrequencyTracker (9), FMDemodulator (8), VISDetector (6), SignalSearch integration (4), Robot36 expanded (6)
+
+### Changed
+
+- PD120Mode, PD180Mode, and Robot36Mode refactored to delegate shared DSP math to `PDModeShared`
+- Robot36Mode retains thin internal wrappers for test API compatibility
+
 ## [0.6.0] — 2026-02-08
 
 ### Added
@@ -83,7 +110,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Golden-file test infrastructure with SSIM image comparison
 - Automated comparison scripts (Python) for decode quality analysis
 
-[Unreleased]: https://github.com/kevinnz/SSTV-MEL/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/kevinnz/SSTV-MEL/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/kevinnz/SSTV-MEL/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/kevinnz/SSTV-MEL/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/kevinnz/SSTV-MEL/compare/v0.3.0...v0.5.0
 [0.3.0]: https://github.com/kevinnz/SSTV-MEL/compare/v0.2.0...v0.3.0

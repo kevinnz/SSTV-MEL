@@ -7,7 +7,9 @@ import Foundation
 /// - Leader tone (1900 Hz, ~300ms)
 /// - Break (1200 Hz, ~10ms)
 /// - VIS start bit (1200 Hz, ~30ms)
-/// - 8 data bits (1100 Hz = 0, 1300 Hz = 1, ~30ms each)
+/// - 8 data bits (1100 Hz = 0, 1300 Hz = 1, ~30ms each, LSB first)
+///   - Bits 0-6: 7 data bits forming the VIS code
+///   - Bit 7: even parity bit
 /// - Stop bit (1200 Hz, ~30ms)
 struct VISDetector {
 
@@ -29,6 +31,10 @@ struct VISDetector {
     ]
 
     /// Detect VIS code in audio signal
+    ///
+    /// Searches for a 1900 Hz leader tone followed by VIS data bits.
+    /// Uses parity correction to resolve single ambiguous bits, and
+    /// retries with shifted window positions for robustness.
     ///
     /// - Parameters:
     ///   - samples: Audio samples (mono)
@@ -70,7 +76,7 @@ struct VISDetector {
         progressHandler?(0.5)
 
         // Look for sustained 1900 Hz tone
-        let tolerance = 100.0 // Increased tolerance
+        let tolerance = 100.0
         var leaderStart = -1
         var consecutiveLeader = 0
         let requiredLeaderSteps = leaderSamples / stepSize
@@ -105,7 +111,27 @@ struct VISDetector {
                         let startSample = visStartStep * stepSize
                         let modeName = Self.knownModes[code] ?? "Unknown"
                         return VISResult(code: code, mode: modeName, startSample: startSample)
-                    } else if attemptCount < 5 {
+                    }
+
+                    // Try shifted positions around the detected leader end
+                    let shiftOffsets = [-5, -3, -1, 1, 3, 5]
+                    for shift in shiftOffsets {
+                        let shiftedStep = visStartStep + shift
+                        guard shiftedStep > 0 else { continue }
+                        if let code = decodeVISBits(
+                            frequencies: searchFreqs,
+                            startStep: shiftedStep,
+                            stepSize: stepSize,
+                            sampleRate: sampleRate
+                        ) {
+                            progressHandler?(1.0)
+                            let startSample = shiftedStep * stepSize
+                            let modeName = Self.knownModes[code] ?? "Unknown"
+                            return VISResult(code: code, mode: modeName, startSample: startSample)
+                        }
+                    }
+
+                    if attemptCount < 5 {
                         // Reset and continue searching
                         leaderStart = -1
                         consecutiveLeader = 0
@@ -121,14 +147,26 @@ struct VISDetector {
         return nil
     }
 
-    /// Decode VIS data bits
+    // MARK: - VIS Bit Decoding
+
+    /// Confidence level for a decoded VIS bit
+    private enum BitValue {
+        case zero
+        case one
+        case ambiguous
+    }
+
+    /// Decode VIS data bits with parity-based error correction.
+    ///
+    /// Reads 8 bits (7 data + 1 parity) and uses even parity to resolve
+    /// a single ambiguous bit when possible.
     ///
     /// - Parameters:
     ///   - frequencies: Detected frequencies
     ///   - startStep: Step index where VIS bits start
     ///   - stepSize: Samples per step
-    ///   - sampleRate: Sample rate
-    /// - Returns: VIS code byte, or nil if decoding fails
+    ///   - sampleRate: Sample rate in Hz
+    /// - Returns: 7-bit VIS code, or nil if decoding fails
     private func decodeVISBits(
         frequencies: [Double],
         startStep: Int,
@@ -142,7 +180,7 @@ struct VISDetector {
         let freq1 = 1300.0 // Binary 1
         let tolerance = 50.0
 
-        var bits: [Bool] = []
+        var bitValues: [BitValue] = []
         var currentStep = startStep
 
         // Skip break and start bit (both 1200 Hz)
@@ -155,29 +193,84 @@ struct VISDetector {
             }
 
             // Average frequency over bit duration
-            let bitFreqs = frequencies[currentStep..<min(currentStep + stepsPerBit, frequencies.count)]
+            let endStep = min(currentStep + stepsPerBit, frequencies.count)
+            let bitFreqs = frequencies[currentStep..<endStep]
             let avgFreq = bitFreqs.reduce(0.0, +) / Double(bitFreqs.count)
 
             if abs(avgFreq - freq0) < tolerance {
-                bits.append(false)
+                bitValues.append(.zero)
             } else if abs(avgFreq - freq1) < tolerance {
-                bits.append(true)
+                bitValues.append(.one)
             } else {
-                // Unclear bit, assume noise
-                return nil
+                bitValues.append(.ambiguous)
             }
 
             currentStep += stepsPerBit
         }
 
-        // Convert bits to byte (LSB first)
-        var code: UInt8 = 0
-        for (index, bit) in bits.enumerated() {
-            if bit {
-                code |= (1 << index)
-            }
+        guard bitValues.count == 8 else { return nil }
+
+        // Count ambiguous bits
+        let ambiguousIndices = bitValues.enumerated().compactMap { index, value -> Int? in
+            if case .ambiguous = value { return index }
+            return nil
         }
 
-        return code
+        if ambiguousIndices.isEmpty {
+            // All bits clear — convert directly
+            var code: UInt8 = 0
+            for (index, bit) in bitValues.enumerated() {
+                if case .one = bit {
+                    code |= (1 << index)
+                }
+            }
+            // Verify parity (even parity: total set bits in all 8 should be even)
+            let dataBits = code & 0x7F
+            let parityBit = (code >> 7) & 1
+            let calculatedParity = UInt8(dataBits.nonzeroBitCount % 2)
+            if parityBit == calculatedParity {
+                return dataBits
+            }
+            // Parity mismatch but all bits were clear — still return the code
+            // (parity errors are common with real-world noise)
+            return dataBits
+
+        } else if ambiguousIndices.count == 1 {
+            // Exactly one ambiguous bit — try to resolve using even parity
+            let ambiguousIndex = ambiguousIndices[0]
+
+            for tryBit in [BitValue.zero, BitValue.one] {
+                var testBits = bitValues
+                testBits[ambiguousIndex] = tryBit
+
+                var code: UInt8 = 0
+                for (index, bit) in testBits.enumerated() {
+                    if case .one = bit {
+                        code |= (1 << index)
+                    }
+                }
+
+                let dataBits = code & 0x7F
+                let parityBit = (code >> 7) & 1
+                let calculatedParity = UInt8(dataBits.nonzeroBitCount % 2)
+
+                if parityBit == calculatedParity {
+                    return dataBits
+                }
+            }
+
+            // Neither parity matched — return best guess (treat ambiguous as 0)
+            var code: UInt8 = 0
+            for (index, bit) in bitValues.enumerated() {
+                if case .one = bit {
+                    code |= (1 << index)
+                }
+            }
+            return code & 0x7F
+
+        } else {
+            // Multiple ambiguous bits — cannot resolve
+            return nil
+        }
     }
 }

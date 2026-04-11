@@ -111,6 +111,23 @@ public struct DecodingOptions {
         }
     }
 
+    // MARK: - Signal Search
+
+    /// Number of seconds to skip at the start of audio when searching for sync.
+    ///
+    /// The VIS code and leader tone typically occupy the first ~3 seconds of
+    /// an SSTV transmission. Skipping past them avoids false sync detections
+    /// from the VIS bit frequencies.
+    ///
+    /// - Default: 3.0 seconds
+    /// - Set to 0.0 to search from the very beginning
+    /// - Range: 0.0 to 30.0 seconds
+    public var skipSecondsForVIS: Double {
+        didSet {
+            skipSecondsForVIS = min(max(skipSecondsForVIS, 0.0), 30.0)
+        }
+    }
+
     // MARK: - Clamping Helpers
 
     /// Clamp phase offset to valid range
@@ -130,19 +147,23 @@ public struct DecodingOptions {
     /// Values are automatically clamped to valid ranges:
     /// - Phase: ±50.0 ms
     /// - Skew: ±1.0 ms/line
+    /// - skipSecondsForVIS: 0.0 to 30.0
     ///
     /// - Parameters:
     ///   - phaseOffsetMs: Horizontal phase offset in milliseconds (default: 0.0)
     ///   - skewMsPerLine: Skew correction in milliseconds per line (default: 0.0)
     ///   - syncRecoveryThreshold: Sync recovery threshold as fraction (default: 0.5)
+    ///   - skipSecondsForVIS: Seconds to skip before searching for sync (default: 3.0)
     public init(
         phaseOffsetMs: Double = 0.0,
         skewMsPerLine: Double = 0.0,
-        syncRecoveryThreshold: Double = Self.defaultSyncRecoveryThreshold
+        syncRecoveryThreshold: Double = Self.defaultSyncRecoveryThreshold,
+        skipSecondsForVIS: Double = 3.0
     ) {
         self.phaseOffsetMs = Self.clampPhase(phaseOffsetMs)
         self.skewMsPerLine = Self.clampSkew(skewMsPerLine)
         self.syncRecoveryThreshold = min(max(syncRecoveryThreshold, 0.0), 1.0)
+        self.skipSecondsForVIS = min(max(skipSecondsForVIS, 0.0), 30.0)
     }
 
     /// Default options with no adjustments
@@ -182,6 +203,10 @@ extension DecodingOptions: CustomStringConvertible {
 
         if skewMsPerLine != 0.0 {
             parts.append(String(format: "skew: %.4fms/line", skewMsPerLine))
+        }
+
+        if skipSecondsForVIS != 3.0 {
+            parts.append(String(format: "skip: %.1fs", skipSecondsForVIS))
         }
 
         if parts.isEmpty {

@@ -140,9 +140,8 @@ public struct ImageBuffer: Sendable {
         }
 
         let startIndex = y * width * 3
-        for i in 0..<rowPixels.count {
-            pixels[startIndex + i] = rowPixels[i]
-        }
+        let endIndex = startIndex + width * 3
+        pixels.replaceSubrange(startIndex..<endIndex, with: rowPixels)
 
         linesWritten = max(linesWritten, y + 1)
     }
@@ -185,9 +184,11 @@ public struct ImageBuffer: Sendable {
     ///
     /// - Returns: Array of UInt8 values (R, G, B for each pixel)
     public func toRGB8() -> [UInt8] {
-        return pixels.map { value in
-            UInt8(clamping: Int(value * 255.0))
+        var result = [UInt8](repeating: 0, count: pixels.count)
+        for i in 0..<pixels.count {
+            result[i] = UInt8(clamping: Int(pixels[i] * 255.0))
         }
+        return result
     }
 
     /// Convert to 8-bit RGBA data suitable for image creation
@@ -195,14 +196,14 @@ public struct ImageBuffer: Sendable {
     /// - Returns: Array of UInt8 values (R, G, B, A for each pixel)
     public func toRGBA8() -> [UInt8] {
         let pixelCount = width * height
-        var rgba = [UInt8]()
-        rgba.reserveCapacity(pixelCount * 4)
+        var rgba = [UInt8](repeating: 255, count: pixelCount * 4)
 
-        for i in stride(from: 0, to: pixels.count, by: 3) {
-            rgba.append(UInt8(clamping: Int(pixels[i] * 255.0)))       // R
-            rgba.append(UInt8(clamping: Int(pixels[i + 1] * 255.0)))   // G
-            rgba.append(UInt8(clamping: Int(pixels[i + 2] * 255.0)))   // B
-            rgba.append(255)                                           // A
+        for i in 0..<pixelCount {
+            let srcIdx = i * 3
+            let dstIdx = i * 4
+            rgba[dstIdx] = UInt8(clamping: Int(pixels[srcIdx] * 255.0))
+            rgba[dstIdx + 1] = UInt8(clamping: Int(pixels[srcIdx + 1] * 255.0))
+            rgba[dstIdx + 2] = UInt8(clamping: Int(pixels[srcIdx + 2] * 255.0))
         }
 
         return rgba

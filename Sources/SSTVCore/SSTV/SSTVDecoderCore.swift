@@ -124,7 +124,7 @@ public final class SSTVDecoderCore {
     // MARK: - Internal State (NOT shared, NOT static)
 
     /// Accumulated samples for decoding
-    private var sampleBuffer: [Float] = []
+    private var sampleBuffer: [Double] = []
 
     /// Demodulated frequencies (sample-rate resolution)
     private var frequencies: [Double] = []
@@ -151,6 +151,9 @@ public final class SSTVDecoderCore {
 
     /// Samples needed for current decode phase
     private var samplesNeededForPhase: Int = 0
+
+    /// Number of samples that have been demodulated into the frequencies array
+    private var lastDemodulatedCount: Int = 0
 
     // MARK: - Constants
 
@@ -242,7 +245,7 @@ public final class SSTVDecoderCore {
     /// The decoder maintains internal state between calls.
     ///
     /// - Parameter samples: Array of audio samples (mono, normalized -1.0...1.0)
-    public func processSamples(_ samples: [Float]) {
+    public func processSamples(_ samples: [Double]) {
         guard !samples.isEmpty else { return }
 
         // Validate sample rate (should be caught at init, but check anyway)
@@ -394,6 +397,7 @@ public final class SSTVDecoderCore {
         signalStartFound = false
         currentFrameIndex = 0
         samplesNeededForPhase = 0
+        lastDemodulatedCount = 0
 
         // Reset state machine to idle
         state = .idle
@@ -455,11 +459,8 @@ public final class SSTVDecoderCore {
             return
         }
 
-        // Convert to Double for VIS detector
-        let samples = sampleBuffer.map { Double($0) }
-
         // Attempt VIS detection
-        if let visResult = visDetector.detect(samples: samples, sampleRate: sampleRate) {
+        if let visResult = visDetector.detect(samples: sampleBuffer, sampleRate: sampleRate) {
             emitDiagnostic(.info, category: .sync,
                 message: "VIS code detected",
                 data: ["code": "0x\(String(format: "%02X", visResult.code))", "mode": visResult.mode])
@@ -516,9 +517,9 @@ public final class SSTVDecoderCore {
         }
 
         // Demodulate accumulated samples
-        let samples = sampleBuffer.map { Double($0) }
         if let tracker = fmTracker {
-            frequencies = tracker.track(samples: samples)
+            frequencies = tracker.track(samples: sampleBuffer)
+            lastDemodulatedCount = sampleBuffer.count
         }
 
         // Find signal start
@@ -556,11 +557,11 @@ public final class SSTVDecoderCore {
               var buffer = imageBuffer,
               signalStartFound else { return }
 
-        // Re-demodulate all accumulated samples if we have more than currently demodulated
-        if sampleBuffer.count > frequencies.count {
-            let samples = sampleBuffer.map { Double($0) }
+        // Re-demodulate only if new samples have been added since last demodulation
+        if sampleBuffer.count > lastDemodulatedCount {
             if let tracker = fmTracker {
-                frequencies = tracker.track(samples: samples)
+                frequencies = tracker.track(samples: sampleBuffer)
+                lastDemodulatedCount = sampleBuffer.count
             }
         }
 
@@ -736,6 +737,65 @@ public final class SSTVDecoderCore {
             }
         }
 
+        // If not enough valid frames found after skip, retry from beginning
+        if bestValidFrames < 3 {
+            for startIndex in stride(from: 0, to: min(skipSamples, searchLimit), by: searchStep) {
+                var validFrames = 0
+                var totalScore = 0
+
+                for frameNum in 0..<10 {
+                    let frameStart = startIndex + frameNum * samplesPerFrame
+                    if frameStart + samplesPerFrame >= frequencies.count { break }
+
+                    var syncCount = 0
+                    var totalChecks = 0
+                    for s in stride(from: 0, to: samplesPerSync, by: 20) {
+                        if frameStart + s < frequencies.count {
+                            let freq = frequencies[frameStart + s]
+                            if abs(freq - syncFreq) < syncTolerance {
+                                syncCount += 1
+                            }
+                            totalChecks += 1
+                        }
+                    }
+
+                    let imageStart = frameStart + samplesPerSync + 50
+                    var imageCount = 0
+                    for s in stride(from: 0, to: 1000, by: 100) {
+                        if imageStart + s < frequencies.count {
+                            let freq = frequencies[imageStart + s]
+                            if freq >= 1400 && freq <= 2400 {
+                                imageCount += 1
+                            }
+                        }
+                    }
+
+                    if totalChecks > 0 && syncCount >= totalChecks * 4 / 10 && imageCount >= 5 {
+                        validFrames += 1
+                        totalScore += syncCount + imageCount
+                    }
+                }
+
+                if validFrames > bestValidFrames || (validFrames == bestValidFrames && totalScore > bestScore) {
+                    bestValidFrames = validFrames
+                    bestScore = totalScore
+                    bestStartIndex = startIndex
+                }
+
+                if validFrames >= 6 {
+                    let confidence = Float(validFrames) / 10.0
+                    let fineTuned = fineTuneSyncStart(
+                        startIndex: startIndex,
+                        frequencies: frequencies,
+                        syncFreq: syncFreq,
+                        syncTolerance: syncTolerance,
+                        samplesPerSync: samplesPerSync
+                    )
+                    return (fineTuned, confidence)
+                }
+            }
+        }
+
         // Use best match found, even if not ideal
         if bestValidFrames >= 3 {
             let confidence = Float(bestValidFrames) / 10.0
@@ -820,10 +880,11 @@ public final class SSTVDecoderCore {
 
 public extension SSTVDecoderCore {
 
-    /// Process samples from a Double array
+    /// Process samples from a Float array
     ///
-    /// Convenience method for when audio is already in Double format.
-    func processSamples(_ samples: [Double]) {
-        processSamples(samples.map { Float($0) })
+    /// Convenience method for when audio is in Float format.
+    /// Converts to Double and delegates to the primary processSamples method.
+    func processSamples(_ samples: [Float]) {
+        processSamples(samples.map { Double($0) })
     }
 }
