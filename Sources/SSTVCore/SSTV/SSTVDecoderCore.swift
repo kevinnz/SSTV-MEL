@@ -160,9 +160,6 @@ public final class SSTVDecoderCore {
     /// Minimum samples needed to attempt VIS detection (~2 seconds at 44.1kHz)
     private static let minSamplesForVIS: Int = 88200
 
-    /// Samples to skip for VIS code/leader tone (~3 seconds)
-    private static let skipSecondsForVIS: Double = 3.0
-
     // MARK: - Initialization
 
     /// Create a decoder with auto mode detection
@@ -509,17 +506,25 @@ public final class SSTVDecoderCore {
         guard let mode = mode else { return }
 
         // Need enough samples for FM demodulation and signal search
-        let minSamplesForSearch = Int(Self.skipSecondsForVIS * sampleRate) +
+        let minSamplesForSearch = Int(options.skipSecondsForVIS * sampleRate) +
                                   Int(mode.frameDurationMs * sampleRate / 1000.0) * 10
 
         guard sampleBuffer.count >= minSamplesForSearch else {
             return
         }
 
-        // Demodulate accumulated samples
-        if let tracker = fmTracker {
+        // Demodulate accumulated samples (one-shot for signal search)
+        if var tracker = fmTracker {
             frequencies = tracker.track(samples: sampleBuffer)
             lastDemodulatedCount = sampleBuffer.count
+
+            // Seed incremental state so future processFrameDecoding() calls
+            // only demodulate newly arrived samples — O(new) instead of O(total).
+            tracker.prepareForIncremental(
+                existingFrequencies: frequencies,
+                tailSamples: sampleBuffer
+            )
+            fmTracker = tracker
         }
 
         // Find signal start
@@ -557,11 +562,13 @@ public final class SSTVDecoderCore {
               var buffer = imageBuffer,
               signalStartFound else { return }
 
-        // Re-demodulate only if new samples have been added since last demodulation
+        // Incrementally demodulate only newly arrived samples (O(new) not O(total))
         if sampleBuffer.count > lastDemodulatedCount {
-            if let tracker = fmTracker {
-                frequencies = tracker.track(samples: sampleBuffer)
+            if var tracker = fmTracker {
+                let newSamples = Array(sampleBuffer[lastDemodulatedCount...])
+                frequencies = tracker.trackIncremental(newSamples: newSamples)
                 lastDemodulatedCount = sampleBuffer.count
+                fmTracker = tracker
             }
         }
 
@@ -652,7 +659,7 @@ public final class SSTVDecoderCore {
         let samplesPerSync = Int(20.0 * sampleRate / 1000.0)  // 20ms sync pulse
 
         // Skip past VIS code and leader tone
-        let skipSamples = Int(Self.skipSecondsForVIS * sampleRate)
+        let skipSamples = Int(options.skipSecondsForVIS * sampleRate)
 
         // Prefer searching where there's room for a full image, but allow partial decodes
         let requiredSamples = samplesPerFrame * (mode.height / mode.linesPerFrame)
