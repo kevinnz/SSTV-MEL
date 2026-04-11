@@ -70,7 +70,6 @@ final class SignalSearchTests: XCTestCase {
         // Generate enough audio: ~3s leader + ~10 frames for signal search + a few extra frames
         let leaderDuration = 3.5  // Seconds of leader to skip past
         let signalDuration = 8.0  // Seconds of SSTV signal with sync
-        let totalDuration = leaderDuration + signalDuration
 
         // Leader: 1900 Hz (no sync)
         let leader = generateSineWave(
@@ -135,14 +134,6 @@ final class SignalSearchTests: XCTestCase {
 
         // Check state - with good sync patterns, should reach decoding or complete
         let state = decoder.state
-        let decoderProgressed: Bool = {
-            switch state {
-            case .decoding, .complete, .syncLocked:
-                return true
-            default:
-                return false
-            }
-        }()
 
         // It's acceptable if sync detection fails with synthetic data, but
         // the decoder should at least have attempted searching

@@ -149,7 +149,7 @@ Test with synthetic sine waves:
 - Synthetic VIS code for PD120 (0x5F), PD180 (0x60), Robot36 (0x08)
 - Correct leader tone detection (1900 Hz)
 - Correct start bit detection (1200 Hz)
-- Bit decoding accuracy (1100 Hz = 1, 1300 Hz = 0)
+- Bit decoding accuracy (1100 Hz = 0, 1300 Hz = 1)
 - Parity validation
 - Unknown VIS code handling
 - Noisy signal tolerance (if B3 improvements are applied)
