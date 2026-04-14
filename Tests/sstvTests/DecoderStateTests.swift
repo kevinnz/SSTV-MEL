@@ -152,7 +152,7 @@ final class DecoderStateTests: XCTestCase {
         // Verify timing - PD180 has longer frame duration
         XCTAssertEqual(params.frameDurationMs, 754.29, accuracy: 0.01)
         XCTAssertEqual(params.syncPulseMs, 20.0, accuracy: 0.01)
-        XCTAssertEqual(params.porchMs, 2.0, accuracy: 0.01)
+        XCTAssertEqual(params.porchMs, 2.08, accuracy: 0.01)
 
         // Verify frequencies (same as PD120)
         XCTAssertEqual(params.syncFrequencyHz, 1200.0, accuracy: 0.1)

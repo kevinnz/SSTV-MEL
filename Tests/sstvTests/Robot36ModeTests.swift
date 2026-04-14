@@ -301,4 +301,315 @@ final class Robot36ModeTests: XCTestCase {
         XCTAssertEqual(frame0[0].count, mode.width * 3)
         XCTAssertEqual(frame1[0].count, mode.width * 3)
     }
+
+    // MARK: - C5 Extended Tests
+
+    func testDecodeFrameWithWhiteLuminance() {
+        let mode = Robot36Mode()
+        let sampleRate = 48000.0
+
+        let frameSamples = Int(mode.frameDurationMs * sampleRate / 1000.0)
+        let syncSamples = Int(mode.syncPulseMs * sampleRate / 1000.0)
+        let porchSamples = Int(mode.syncPorchMs * sampleRate / 1000.0)
+        let yDurationSamples = Int(mode.yDurationMs * sampleRate / 1000.0)
+
+        // Initialize with mid-gray (1900 Hz for chroma = neutral)
+        var frequencies = [Double](repeating: 1900.0, count: frameSamples)
+
+        // Even line: set Y component to white (2300 Hz)
+        let evenYStart = syncSamples + porchSamples
+        for i in evenYStart..<(evenYStart + yDurationSamples) {
+            if i < frequencies.count {
+                frequencies[i] = mode.whiteFrequencyHz
+            }
+        }
+
+        // Odd line: set Y component to white (2300 Hz)
+        let lineSamples = Int(mode.lineDurationMs * sampleRate / 1000.0)
+        let oddYStart = lineSamples + syncSamples + porchSamples
+        for i in oddYStart..<(oddYStart + yDurationSamples) {
+            if i < frequencies.count {
+                frequencies[i] = mode.whiteFrequencyHz
+            }
+        }
+
+        let lines = mode.decodeFrame(
+            frequencies: frequencies,
+            sampleRate: sampleRate,
+            frameIndex: 0
+        )
+
+        XCTAssertEqual(lines.count, 2, "Should decode 2 lines per frame")
+
+        // Both lines should have brighter pixels due to white luminance
+        for lineIndex in 0..<2 {
+            let pixels = lines[lineIndex]
+            let r = pixels[0]
+            let g = pixels[1]
+            let b = pixels[2]
+
+            // With Y=1.0 and Cb/Cr=0.5 (neutral chroma), RGB should be ~1.0
+            XCTAssertGreaterThan(r, 0.5, "Expected bright pixel R in line \(lineIndex) due to white luminance")
+            XCTAssertGreaterThan(g, 0.5, "Expected bright pixel G in line \(lineIndex) due to white luminance")
+            XCTAssertGreaterThan(b, 0.5, "Expected bright pixel B in line \(lineIndex) due to white luminance")
+        }
+    }
+
+    func testChromaLineHandling() {
+        let mode = Robot36Mode()
+        let sampleRate = 48000.0
+
+        let frameSamples = Int(mode.frameDurationMs * sampleRate / 1000.0)
+        let syncSamples = Int(mode.syncPulseMs * sampleRate / 1000.0)
+        let porchSamples = Int(mode.syncPorchMs * sampleRate / 1000.0)
+        let yDurationSamples = Int(mode.yDurationMs * sampleRate / 1000.0)
+        let separatorSamples = Int(mode.separatorMs * sampleRate / 1000.0)
+        let chromaPorchSamples = Int(mode.chromaPorchMs * sampleRate / 1000.0)
+        let chromaDurationSamples = Int(mode.chromaDurationMs * sampleRate / 1000.0)
+        let lineSamples = Int(mode.lineDurationMs * sampleRate / 1000.0)
+
+        // Start with mid-gray luminance (1900 Hz) everywhere
+        var frequencies = [Double](repeating: 1900.0, count: frameSamples)
+
+        // Add sync pulses
+        for i in 0..<syncSamples {
+            frequencies[i] = mode.syncFrequencyHz
+        }
+        for i in lineSamples..<(lineSamples + syncSamples) {
+            if i < frequencies.count {
+                frequencies[i] = mode.syncFrequencyHz
+            }
+        }
+
+        // Even line R-Y chroma → max (2300 Hz) for red bias
+        let evenCrStart = syncSamples + porchSamples + yDurationSamples + separatorSamples + chromaPorchSamples
+        for i in evenCrStart..<(evenCrStart + chromaDurationSamples) {
+            if i < frequencies.count {
+                frequencies[i] = mode.whiteFrequencyHz  // 2300 Hz = max Cr
+            }
+        }
+
+        // Odd line B-Y chroma → max (2300 Hz) for blue bias
+        let oddCbStart = lineSamples + syncSamples + porchSamples + yDurationSamples + separatorSamples + chromaPorchSamples
+        for i in oddCbStart..<(oddCbStart + chromaDurationSamples) {
+            if i < frequencies.count {
+                frequencies[i] = mode.whiteFrequencyHz  // 2300 Hz = max Cb
+            }
+        }
+
+        let lines = mode.decodeFrame(
+            frequencies: frequencies,
+            sampleRate: sampleRate,
+            frameIndex: 0
+        )
+
+        XCTAssertEqual(lines.count, 2)
+
+        // Both lines see Cr=1.0 (max red chroma) and Cb=1.0 (max blue chroma)
+        // With Y=0.5, Cr=1.0, Cb=1.0:
+        //   R = 0.5 + 1.402 * 0.5 = 1.201 → clamped to 1.0
+        //   G = 0.5 - 0.344136 * 0.5 - 0.714136 * 0.5 = -0.029 → clamped to 0.0
+        //   B = 0.5 + 1.772 * 0.5 = 1.386 → clamped to 1.0
+        // So both lines should have high R, low G, high B
+        for lineIndex in 0..<2 {
+            let pixels = lines[lineIndex]
+            let r = pixels[0]
+            let g = pixels[1]
+            let b = pixels[2]
+
+            XCTAssertGreaterThan(r, 0.5, "Line \(lineIndex) should have elevated red due to Cr=1.0")
+            XCTAssertGreaterThan(b, 0.5, "Line \(lineIndex) should have elevated blue due to Cb=1.0")
+            XCTAssertLessThan(g, 0.5, "Line \(lineIndex) green should be reduced with both chroma maxed")
+        }
+    }
+
+    func testSeparatorFrequencies() {
+        let mode = Robot36Mode()
+        let sampleRate = 48000.0
+
+        // Verify separator timing constant
+        XCTAssertEqual(mode.separatorMs, 4.5, accuracy: 0.001,
+                       "Separator duration should be 4.5ms")
+
+        // Create a frame with correct separator placement at 1500 Hz
+        let frameSamples = Int(mode.frameDurationMs * sampleRate / 1000.0)
+        let syncSamples = Int(mode.syncPulseMs * sampleRate / 1000.0)
+        let porchSamples = Int(mode.syncPorchMs * sampleRate / 1000.0)
+        let yDurationSamples = Int(mode.yDurationMs * sampleRate / 1000.0)
+        let separatorSamples = Int(mode.separatorMs * sampleRate / 1000.0)
+        let lineSamples = Int(mode.lineDurationMs * sampleRate / 1000.0)
+
+        var frequencies = [Double](repeating: 1900.0, count: frameSamples)
+
+        // Place separators at the correct position (1500 Hz)
+        let evenSepStart = syncSamples + porchSamples + yDurationSamples
+        for i in evenSepStart..<(evenSepStart + separatorSamples) {
+            if i < frequencies.count {
+                frequencies[i] = mode.blackFrequencyHz  // 1500 Hz separator
+            }
+        }
+
+        let oddSepStart = lineSamples + syncSamples + porchSamples + yDurationSamples
+        for i in oddSepStart..<(oddSepStart + separatorSamples) {
+            if i < frequencies.count {
+                frequencies[i] = mode.blackFrequencyHz  // 1500 Hz separator
+            }
+        }
+
+        // Decode should still work correctly with separators in place
+        let lines = mode.decodeFrame(
+            frequencies: frequencies,
+            sampleRate: sampleRate,
+            frameIndex: 0
+        )
+
+        XCTAssertEqual(lines.count, 2, "Should decode 2 lines even with separators present")
+        XCTAssertEqual(lines[0].count, mode.width * 3, "Line 0 pixel count should be correct")
+        XCTAssertEqual(lines[1].count, mode.width * 3, "Line 1 pixel count should be correct")
+
+        // Pixels should be in valid range
+        for lineIndex in 0..<2 {
+            for i in 0..<(mode.width * 3) {
+                XCTAssertGreaterThanOrEqual(lines[lineIndex][i], 0.0,
+                    "Pixel values should be >= 0 in line \(lineIndex)")
+                XCTAssertLessThanOrEqual(lines[lineIndex][i], 1.0,
+                    "Pixel values should be <= 1 in line \(lineIndex)")
+            }
+        }
+    }
+
+    func testChromaZeroFrequency() {
+        let mode = Robot36Mode()
+        let sampleRate = 48000.0
+
+        // Verify the chroma zero frequency
+        XCTAssertEqual(mode.chromaZeroFrequencyHz, 1900.0, accuracy: 0.1,
+                       "Chroma zero reference should be 1900 Hz")
+
+        // When all chroma is at 1900 Hz (neutral), colors should be gray
+        let frameSamples = Int(mode.frameDurationMs * sampleRate / 1000.0)
+        let frequencies = [Double](repeating: 1900.0, count: frameSamples)
+
+        let lines = mode.decodeFrame(
+            frequencies: frequencies,
+            sampleRate: sampleRate,
+            frameIndex: 0
+        )
+
+        // With Y=0.5 (from 1900 Hz luminance) and Cb=Cr=0.5 (neutral chroma),
+        // RGB should all be approximately 0.5 (neutral gray)
+        for lineIndex in 0..<2 {
+            let pixels = lines[lineIndex]
+            // Sample multiple pixels to verify consistency
+            for pixelIndex in stride(from: 0, to: min(30, mode.width), by: 10) {
+                let r = pixels[pixelIndex * 3]
+                let g = pixels[pixelIndex * 3 + 1]
+                let b = pixels[pixelIndex * 3 + 2]
+
+                XCTAssertEqual(r, 0.5, accuracy: 0.05,
+                    "Neutral chroma should produce gray R≈0.5 at pixel \(pixelIndex) line \(lineIndex) (got \(r))")
+                XCTAssertEqual(g, 0.5, accuracy: 0.05,
+                    "Neutral chroma should produce gray G≈0.5 at pixel \(pixelIndex) line \(lineIndex) (got \(g))")
+                XCTAssertEqual(b, 0.5, accuracy: 0.05,
+                    "Neutral chroma should produce gray B≈0.5 at pixel \(pixelIndex) line \(lineIndex) (got \(b))")
+            }
+        }
+    }
+
+    func testDecodeFrameWithOptions() {
+        let mode = Robot36Mode()
+        let sampleRate = 48000.0
+
+        let frameSamples = Int(mode.frameDurationMs * sampleRate / 1000.0)
+
+        // Create a gradient from black to white across the luminance region
+        let syncSamples = Int(mode.syncPulseMs * sampleRate / 1000.0)
+        let porchSamples = Int(mode.syncPorchMs * sampleRate / 1000.0)
+        let yDurationSamples = Int(mode.yDurationMs * sampleRate / 1000.0)
+
+        var frequencies = [Double](repeating: 1900.0, count: frameSamples)
+
+        // Even line: create a gradient in Y region (black→white)
+        let evenYStart = syncSamples + porchSamples
+        for i in 0..<yDurationSamples {
+            let t = Double(i) / Double(yDurationSamples)
+            let freq = mode.blackFrequencyHz + t * mode.frequencyRangeHz
+            if evenYStart + i < frequencies.count {
+                frequencies[evenYStart + i] = freq
+            }
+        }
+
+        // Decode with default options
+        let defaultResult = mode.decodeFrame(
+            frequencies: frequencies,
+            sampleRate: sampleRate,
+            frameIndex: 0,
+            options: .default
+        )
+
+        // Decode with non-zero phase offset
+        let shiftedOptions = DecodingOptions(phaseOffsetMs: 5.0)
+        let shiftedResult = mode.decodeFrame(
+            frequencies: frequencies,
+            sampleRate: sampleRate,
+            frameIndex: 0,
+            options: shiftedOptions
+        )
+
+        // The shifted result should differ from the default
+        XCTAssertEqual(defaultResult.count, 2)
+        XCTAssertEqual(shiftedResult.count, 2)
+
+        // Compare even-line pixels - with a gradient, phase shift means different pixel values
+        var differenceFound = false
+        for i in 0..<(mode.width * 3) {
+            if abs(defaultResult[0][i] - shiftedResult[0][i]) > 0.001 {
+                differenceFound = true
+                break
+            }
+        }
+
+        XCTAssertTrue(
+            differenceFound,
+            "Phase-shifted decode should produce different pixel values from default"
+        )
+    }
+
+    func testFrameTimingAccuracy() {
+        let mode = Robot36Mode()
+
+        // Verify individual line timing components sum correctly
+        let expectedLineDurationMs =
+            mode.syncPulseMs +       // 9.0
+            mode.syncPorchMs +       // 3.0
+            mode.yDurationMs +       // 88.0
+            mode.separatorMs +       // 4.5
+            mode.chromaPorchMs +     // 1.5
+            mode.chromaDurationMs    // 44.0
+
+        XCTAssertEqual(
+            expectedLineDurationMs, 150.0, accuracy: 0.001,
+            "Line timing components should sum to 150.0ms (got \(expectedLineDurationMs))"
+        )
+
+        XCTAssertEqual(
+            mode.lineDurationMs, expectedLineDurationMs, accuracy: 0.001,
+            "lineDurationMs should match the sum of timing components"
+        )
+
+        // Verify frame = 2 × line
+        let expectedFrameDurationMs = mode.lineDurationMs * Double(mode.linesPerFrame)
+        XCTAssertEqual(
+            mode.frameDurationMs, expectedFrameDurationMs, accuracy: 0.001,
+            "Frame duration should be 2 × line duration = 300.0ms (got \(mode.frameDurationMs))"
+        )
+
+        XCTAssertEqual(
+            mode.frameDurationMs, 300.0, accuracy: 0.001,
+            "Frame duration should be 300.0ms"
+        )
+
+        // Verify lines per frame
+        XCTAssertEqual(mode.linesPerFrame, 2, "Robot36 transmits 2 lines per frame")
+    }
 }

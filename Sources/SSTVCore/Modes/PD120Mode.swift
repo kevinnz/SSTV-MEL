@@ -169,32 +169,40 @@ extension PD120Mode {
 
         // Decode all components using time-based continuous indexing
         // Each component spans from its start time to end time
-        let y0Values = decodeComponentTimeBased(
+        let y0Values = PDModeShared.decodeComponentTimeBased(
             frequencies: frequencies,
             startSample: y0StartSample,
             endSample: y0EndSample,
-            pixelCount: width
+            pixelCount: width,
+            blackFrequencyHz: blackFrequencyHz,
+            frequencyRangeHz: frequencyRangeHz
         )
 
-        let crValues = decodeComponentTimeBased(
+        let crValues = PDModeShared.decodeComponentTimeBased(
             frequencies: frequencies,
             startSample: crStartSample,
             endSample: crEndSample,
-            pixelCount: width
+            pixelCount: width,
+            blackFrequencyHz: blackFrequencyHz,
+            frequencyRangeHz: frequencyRangeHz
         )
 
-        let cbValues = decodeComponentTimeBased(
+        let cbValues = PDModeShared.decodeComponentTimeBased(
             frequencies: frequencies,
             startSample: cbStartSample,
             endSample: cbEndSample,
-            pixelCount: width
+            pixelCount: width,
+            blackFrequencyHz: blackFrequencyHz,
+            frequencyRangeHz: frequencyRangeHz
         )
 
-        let y1Values = decodeComponentTimeBased(
+        let y1Values = PDModeShared.decodeComponentTimeBased(
             frequencies: frequencies,
             startSample: y1StartSample,
             endSample: y1EndSample,
-            pixelCount: width
+            pixelCount: width,
+            blackFrequencyHz: blackFrequencyHz,
+            frequencyRangeHz: frequencyRangeHz
         )
 
         // Convert to RGB for both lines
@@ -203,7 +211,7 @@ extension PD120Mode {
 
         for i in 0..<width {
             // Line 0 (even) uses Y0
-            let (r0, g0, b0) = ycbcrToRGB(
+            let (r0, g0, b0) = PDModeShared.ycbcrToRGB(
                 y: y0Values[i],
                 cb: cbValues[i],
                 cr: crValues[i]
@@ -213,7 +221,7 @@ extension PD120Mode {
             line0[i * 3 + 2] = b0
 
             // Line 1 (odd) uses Y1
-            let (r1, g1, b1) = ycbcrToRGB(
+            let (r1, g1, b1) = PDModeShared.ycbcrToRGB(
                 y: y1Values[i],
                 cb: cbValues[i],
                 cr: crValues[i]
@@ -240,116 +248,4 @@ extension PD120Mode {
         return lineIndex % 2 == 0 ? frame[0] : frame[1]
     }
 
-    /// Decode a single component (Y, Cb, or Cr) using TIME-BASED fractional sample indexing.
-    ///
-    /// This is the core of the time-based decoding approach that eliminates horizontal shear
-    /// and vertical banding. Key principles:
-    ///
-    /// 1. **No Integer Rounding**: Sample positions are computed as fractional Double values
-    /// 2. **Linear Interpolation**: Sub-sample precision via interpolation between adjacent samples
-    /// 3. **Time Continuity**: Each pixel maps to an exact time offset with no phase resets
-    /// 4. **Strict Bounds**: Clamping ensures we never read outside the active video window
-    ///
-    /// TIMING MODEL:
-    /// - A component spans from startSample to endSample (fractional indices)
-    /// - Each of the `pixelCount` pixels occupies an equal time slice
-    /// - Pixel i is centered at: startSample + (i + 0.5) * sampleSpan / pixelCount
-    /// - We interpolate between floor(pos) and ceil(pos) to get the exact value
-    ///
-    /// - Parameters:
-    ///   - frequencies: Full array of detected frequencies for the entire frame
-    ///   - startSample: Fractional sample index where this component starts
-    ///   - endSample: Fractional sample index where this component ends
-    ///   - pixelCount: Number of pixels to decode (typically 640)
-    ///
-    /// - Returns: Array of normalized pixel values (0.0...1.0), length = pixelCount
-    private func decodeComponentTimeBased(
-        frequencies: [Double],
-        startSample: Double,
-        endSample: Double,
-        pixelCount: Int
-    ) -> [Double] {
-        var values = [Double](repeating: 0.0, count: pixelCount)
-
-        // Calculate the time span of this component in samples (fractional)
-        let componentDurationSamples = endSample - startSample
-
-        // Each pixel occupies an equal fraction of the component's time span
-        let samplesPerPixel = componentDurationSamples / Double(pixelCount)
-
-        for pixelIndex in 0..<pixelCount {
-            // Calculate the EXACT fractional sample position for this pixel's CENTER
-            // Using center position (pixelIndex + 0.5) provides better sampling
-            let pixelCenterPosition = startSample + (Double(pixelIndex) + 0.5) * samplesPerPixel
-
-            // Clamp position strictly within the frequency array bounds
-            // This prevents reading outside the active video window
-            let clampedPosition = min(max(pixelCenterPosition, 0.0), Double(frequencies.count - 1))
-
-            // Perform linear interpolation between adjacent samples
-            let lowerIndex = Int(clampedPosition)
-            let upperIndex = min(lowerIndex + 1, frequencies.count - 1)
-            let fraction = clampedPosition - Double(lowerIndex)
-
-            // Bounds check (defensive programming)
-            guard lowerIndex >= 0 && lowerIndex < frequencies.count &&
-                  upperIndex >= 0 && upperIndex < frequencies.count else {
-                values[pixelIndex] = 0.5 // Fallback to mid-gray
-                continue
-            }
-
-            // Linear interpolation: freq = (1-t)*f0 + t*f1
-            let lowerFreq = frequencies[lowerIndex]
-            let upperFreq = frequencies[upperIndex]
-            let interpolatedFreq = lowerFreq * (1.0 - fraction) + upperFreq * fraction
-
-            // Map interpolated frequency to normalized pixel value
-            values[pixelIndex] = frequencyToValue(interpolatedFreq)
-        }
-
-        return values
-    }
-
-    /// Convert a detected frequency to a normalized pixel value.
-    ///
-    /// Maps the frequency range [blackFrequencyHz...whiteFrequencyHz]
-    /// to the output range [0.0...1.0].
-    ///
-    /// - Parameter frequency: Detected frequency in Hz
-    /// - Returns: Normalized pixel value (0.0...1.0), clamped
-    private func frequencyToValue(_ frequency: Double) -> Double {
-        // Map frequency linearly from [black...white] to [0.0...1.0]
-        let normalized = (frequency - blackFrequencyHz) / frequencyRangeHz
-
-        // Clamp to valid range
-        return min(max(normalized, 0.0), 1.0)
-    }
-
-    /// Convert YCbCr color values to RGB.
-    ///
-    /// Uses ITU-R BT.601 conversion matrix commonly used in SSTV.
-    ///
-    /// - Parameters:
-    ///   - y: Luminance (0.0...1.0)
-    ///   - cb: Blue chrominance (0.0...1.0)
-    ///   - cr: Red chrominance (0.0...1.0)
-    ///
-    /// - Returns: RGB tuple, each component in range (0.0...1.0), clamped
-    private func ycbcrToRGB(y: Double, cb: Double, cr: Double) -> (r: Double, g: Double, b: Double) {
-        // Center Cb and Cr around 0.5
-        let cbCentered = cb - 0.5
-        let crCentered = cr - 0.5
-
-        // ITU-R BT.601 conversion
-        let r = y + 1.402 * crCentered
-        let g = y - 0.344136 * cbCentered - 0.714136 * crCentered
-        let b = y + 1.772 * cbCentered
-
-        // Clamp to valid range
-        return (
-            r: min(max(r, 0.0), 1.0),
-            g: min(max(g, 0.0), 1.0),
-            b: min(max(b, 0.0), 1.0)
-        )
-    }
 }

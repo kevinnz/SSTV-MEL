@@ -36,6 +36,28 @@ struct FMDemodulator {
     private var reversedFilterCoeffs: [Double] = []
     #endif
 
+    /// State preserved across incremental demodulation calls
+    private var incrementalState = IncrementalState()
+
+    /// Persistent state for streaming (incremental) FM demodulation.
+    ///
+    /// Between calls to ``demodulateIncremental(samples:)``, this struct holds:
+    /// - The oscillator phase offset (total samples already processed)
+    /// - FIR filter overlap buffers (mixed I/Q tails from the previous chunk)
+    /// - The last filtered I/Q pair for phase-difference continuity
+    struct IncrementalState {
+        /// Total samples processed so far — keeps the mixing oscillator phase continuous
+        var totalSamplesProcessed: Int = 0
+        /// Last `filterTaps - 1` mixed I samples from the previous chunk (FIR overlap)
+        var iOverlap: [Double] = []
+        /// Last `filterTaps - 1` mixed Q samples from the previous chunk (FIR overlap)
+        var qOverlap: [Double] = []
+        /// Last filtered I value — used for the phase-difference discriminator at chunk boundaries
+        var lastFilteredI: Double = 0.0
+        /// Last filtered Q value — used for the phase-difference discriminator at chunk boundaries
+        var lastFilteredQ: Double = 0.0
+    }
+
     init(sampleRate: Double) {
         self.sampleRate = sampleRate
         self.filterCoeffs = Self.designLowPassFilter(
@@ -265,14 +287,199 @@ struct FMDemodulator {
 
         return output
     }
+
+    // MARK: - Incremental Demodulation
+
+    /// Initialize incremental state after a full-buffer ``demodulate(samples:)`` call.
+    ///
+    /// Computes the FIR overlap (mixed I/Q tails) so that subsequent
+    /// ``demodulateIncremental(samples:)`` calls continue seamlessly.
+    ///
+    /// - Parameters:
+    ///   - sampleCount: Number of samples already demodulated
+    ///   - tailSamples: Raw audio samples; only the last `filterTaps - 1` are used
+    mutating func initializeIncrementalState(afterProcessing sampleCount: Int, tailSamples: [Double]) {
+        let omega = 2.0 * Double.pi * centerFrequency / sampleRate
+        let overlapSize = min(filterTaps - 1, tailSamples.count)
+        let sampleOffset = sampleCount - overlapSize
+
+        var iOverlap = [Double](repeating: 0.0, count: overlapSize)
+        var qOverlap = [Double](repeating: 0.0, count: overlapSize)
+
+        for i in 0..<overlapSize {
+            let phase = omega * Double(sampleOffset + i)
+            iOverlap[i] = tailSamples[tailSamples.count - overlapSize + i] * cos(phase)
+            qOverlap[i] = tailSamples[tailSamples.count - overlapSize + i] * -sin(phase)
+        }
+
+        incrementalState = IncrementalState(
+            totalSamplesProcessed: sampleCount,
+            iOverlap: iOverlap,
+            qOverlap: qOverlap,
+            // Zero I/Q causes the discriminator normalizer to fall below threshold,
+            // so the very first incremental sample defaults to centerFrequency —
+            // a single-sample imprecision that is negligible for SSTV decoding.
+            lastFilteredI: 0.0,
+            lastFilteredQ: 0.0
+        )
+    }
+
+    /// Demodulate new samples incrementally, preserving filter state across calls.
+    ///
+    /// Uses the overlap-save technique for FIR filtering: the previous chunk's
+    /// last `filterTaps - 1` mixed I/Q samples are prepended so the filter has
+    /// full context for every new sample (except the trailing `halfTaps` which
+    /// are filled with the nearest valid frequency — matching the edge handling
+    /// in the one-shot ``demodulate(samples:)``).
+    ///
+    /// Complexity: O(samples.count) per call instead of O(totalSamples).
+    ///
+    /// - Parameter samples: New audio samples (not yet demodulated)
+    /// - Returns: Demodulated frequencies for the new samples only
+    mutating func demodulateIncremental(samples: [Double]) -> [Double] {
+        let n = samples.count
+        guard n > 0 else { return [] }
+
+        let halfTaps = filterTaps / 2
+        let sampleOffset = incrementalState.totalSamplesProcessed
+        let omega = 2.0 * Double.pi * centerFrequency / sampleRate
+        let hasOverlap = !incrementalState.iOverlap.isEmpty
+
+        // Step 1: Quadrature mixing for new samples (with correct oscillator phase)
+        var iNew = [Double](repeating: 0.0, count: n)
+        var qNew = [Double](repeating: 0.0, count: n)
+
+        #if canImport(Accelerate)
+        var phases = [Double](repeating: 0.0, count: n)
+        var startPhase = omega * Double(sampleOffset)
+        var omegaStep = omega
+        vDSP_vrampD(&startPhase, &omegaStep, &phases, 1, vDSP_Length(n))
+
+        var cosValues = [Double](repeating: 0.0, count: n)
+        var sinValues = [Double](repeating: 0.0, count: n)
+        var count32 = Int32(n)
+        vvcos(&cosValues, phases, &count32)
+        vvsin(&sinValues, phases, &count32)
+
+        vDSP_vmulD(samples, 1, cosValues, 1, &iNew, 1, vDSP_Length(n))
+        vDSP_vmulD(samples, 1, sinValues, 1, &qNew, 1, vDSP_Length(n))
+        var minusOne: Double = -1.0
+        vDSP_vsmulD(qNew, 1, &minusOne, &qNew, 1, vDSP_Length(n))
+        #else
+        for i in 0..<n {
+            let phase = omega * Double(sampleOffset + i)
+            iNew[i] = samples[i] * cos(phase)
+            qNew[i] = samples[i] * -sin(phase)
+        }
+        #endif
+
+        // Step 2: FIR filter with overlap for continuity
+        // With overlap, the combined buffer gives the FIR enough backward context
+        // to produce valid output for all new samples except the trailing halfTaps.
+        let iFilteredSlice: [Double]
+        let qFilteredSlice: [Double]
+
+        if hasOverlap {
+            let iCombined = incrementalState.iOverlap + iNew
+            let qCombined = incrementalState.qOverlap + qNew
+            let iFilteredFull = applyFIRFilter(iCombined)
+            let qFilteredFull = applyFIRFilter(qCombined)
+            // Extract the portion corresponding to new samples
+            iFilteredSlice = Array(iFilteredFull.suffix(n))
+            qFilteredSlice = Array(qFilteredFull.suffix(n))
+        } else {
+            iFilteredSlice = applyFIRFilter(iNew)
+            qFilteredSlice = applyFIRFilter(qNew)
+        }
+
+        // Step 3: Save overlap for next call (last filterTaps - 1 mixed I/Q)
+        // If n < filterTaps - 1, merge with existing overlap to build up context.
+        if hasOverlap && n < filterTaps - 1 {
+            let combinedI = incrementalState.iOverlap + iNew
+            let combinedQ = incrementalState.qOverlap + qNew
+            let keepSize = min(filterTaps - 1, combinedI.count)
+            incrementalState.iOverlap = Array(combinedI.suffix(keepSize))
+            incrementalState.qOverlap = Array(combinedQ.suffix(keepSize))
+        } else {
+            let overlapSize = min(filterTaps - 1, n)
+            incrementalState.iOverlap = Array(iNew.suffix(overlapSize))
+            incrementalState.qOverlap = Array(qNew.suffix(overlapSize))
+        }
+
+        // Step 4: Compute instantaneous frequency from phase derivative
+        var frequencies = [Double](repeating: centerFrequency, count: n)
+
+        // Valid filter output range depends on overlap availability:
+        //   With overlap: indices [0, n - halfTaps) have valid FIR output
+        //   Without overlap (first call): [halfTaps + 1, n - halfTaps) matches original
+        let validStart = hasOverlap ? 0 : min(halfTaps + 1, n)
+        let validEnd = max(0, n - halfTaps)
+
+        guard validEnd > validStart else {
+            // Chunk too small for any valid filtered output
+            incrementalState.totalSamplesProcessed += n
+            return frequencies
+        }
+
+        for i in validStart..<validEnd {
+            let iCurr = iFilteredSlice[i]
+            let qCurr = qFilteredSlice[i]
+
+            let iPrev: Double
+            let qPrev: Double
+
+            if i == 0 {
+                // Use saved state from previous chunk boundary
+                iPrev = incrementalState.lastFilteredI
+                qPrev = incrementalState.lastFilteredQ
+            } else {
+                iPrev = iFilteredSlice[i - 1]
+                qPrev = qFilteredSlice[i - 1]
+            }
+
+            let discriminator = iPrev * qCurr - qPrev * iCurr
+            let normalizer = iPrev * iPrev + qPrev * qPrev
+
+            if normalizer > 1e-10 {
+                let phaseDiff = atan2(discriminator, iPrev * iCurr + qPrev * qCurr)
+                let freqDeviation = phaseDiff * sampleRate / (2.0 * Double.pi)
+                frequencies[i] = centerFrequency + freqDeviation
+            }
+        }
+
+        // Fill edges with nearest valid values (mirrors one-shot edge handling)
+        if validStart > 0 && validEnd > validStart {
+            let firstValid = frequencies[validStart]
+            for i in 0..<validStart {
+                frequencies[i] = firstValid
+            }
+        }
+        if validEnd < n && validEnd > 0 {
+            let lastValid = frequencies[validEnd - 1]
+            for i in validEnd..<n {
+                frequencies[i] = lastValid
+            }
+        }
+
+        // Save state for next call
+        incrementalState.lastFilteredI = iFilteredSlice[n - 1]
+        incrementalState.lastFilteredQ = qFilteredSlice[n - 1]
+        incrementalState.totalSamplesProcessed += n
+
+        return frequencies
+    }
 }
 
 /// High-performance frequency tracker using quadrature FM demodulation
 ///
 /// This implements the ADR-001 specified demodulation for SSTV decoding.
+/// Supports both one-shot (full-buffer) and incremental (streaming) modes.
 struct FMFrequencyTracker {
     let sampleRate: Double
-    let demodulator: FMDemodulator
+    var demodulator: FMDemodulator
+
+    /// Accumulated frequencies from incremental demodulation
+    private var accumulatedFrequencies: [Double] = []
 
     init(sampleRate: Double) {
         self.sampleRate = sampleRate
@@ -280,6 +487,10 @@ struct FMFrequencyTracker {
     }
 
     /// Track frequencies across the entire audio signal using quadrature FM demodulation
+    ///
+    /// This is the one-shot API for full-buffer processing (e.g., signal search).
+    /// For streaming use, call ``prepareForIncremental(existingFrequencies:tailSamples:)``
+    /// after this method, then use ``trackIncremental(newSamples:)`` for subsequent chunks.
     ///
     /// - Parameters:
     ///   - samples: Complete audio signal (mono)
@@ -296,5 +507,35 @@ struct FMFrequencyTracker {
         progressHandler?(1.0)
 
         return frequencies
+    }
+
+    /// Prepare the tracker for incremental demodulation after a one-shot ``track(samples:)`` call.
+    ///
+    /// Seeds the accumulated frequencies and initializes the demodulator's incremental state
+    /// so that subsequent ``trackIncremental(newSamples:)`` calls continue seamlessly.
+    ///
+    /// - Parameters:
+    ///   - existingFrequencies: The frequencies already produced by ``track(samples:)``
+    ///   - tailSamples: The raw audio samples (used to compute FIR overlap state);
+    ///     only the last `filterTaps - 1` samples are used.
+    mutating func prepareForIncremental(existingFrequencies: [Double], tailSamples: [Double]) {
+        accumulatedFrequencies = existingFrequencies
+        demodulator.initializeIncrementalState(
+            afterProcessing: existingFrequencies.count,
+            tailSamples: tailSamples
+        )
+    }
+
+    /// Demodulate only newly arrived samples and append to the accumulated result.
+    ///
+    /// This is O(newSamples.count) per call instead of O(totalSamples) — fixing the
+    /// quadratic cost of re-demodulating the entire buffer on every chunk.
+    ///
+    /// - Parameter newSamples: Audio samples that have not yet been demodulated
+    /// - Returns: The full accumulated frequencies array (existing + new)
+    mutating func trackIncremental(newSamples: [Double]) -> [Double] {
+        let newFreqs = demodulator.demodulateIncremental(samples: newSamples)
+        accumulatedFrequencies.append(contentsOf: newFreqs)
+        return accumulatedFrequencies
     }
 }
